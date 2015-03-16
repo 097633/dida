@@ -1,0 +1,1322 @@
+<?php
+// $Id$
+
+/**
+ * @file 模块主文件，当模块启用后，系统初始化将载入此文件
+ */
+
+/**
+ * @Implement of hook_menu()
+ * 定义路径
+ */
+function article_menu(){
+  $items = array();
+  $items['article/%'] = array(
+    'load_functions' => array(1 => array('article_load')),
+    'access_callback' => TRUE, // 浏览权限
+    'page_callback' => 'article_page',
+    'page_arguments' => array(1),
+    //'file' => 'article.page.inc',
+  );
+	$items['search'] = array(
+    'access_callback' => TRUE, // 浏览权限
+    'page_callback' => 'search_page',
+  );
+	$items['article'] = array(
+	  'title' => '文章',
+	  'access_callback' => TRUE, // 浏览权限
+	  'page_callback' => 'article_front',
+	  'page_arguments' => array(''),
+	); 
+	$items['sitemap.xml'] = array(
+	  'title' => '网站地图',
+	  'access_callback' => TRUE, // 浏览权限
+	  'page_callback' => 'sitemap_xml',
+	  'page_arguments' => array(''),
+	); 
+	$items['tags'] = array(
+	  'title' => '标签',
+	  'access_callback' => TRUE, // 浏览权限
+	  'page_callback' => 'tags_page',
+	  'page_arguments' => array(''),
+	); 
+	$items['tag/%'] = array(
+	  'access_callback' => TRUE, // 浏览权限
+	  'page_callback' => 'tag_category',
+	  'page_arguments' => array(''),
+	); 
+  $items['admin/article/fields'] = array(
+    'title' => '字段管理',
+    'access_arguments' => array('admin article fields'),
+    'page_callback' => 'article_admin_fields',
+    'file' => 'article.admin.inc',
+  );
+	$items['article/add'] = array(
+    'title' => '发表文章',
+    'access_callback' => 'article_is_edit',
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('article_node_form'),
+    'file' => 'article.form.inc',
+  );
+	$items['archives/article/%'] = array(
+    'title' => '发表文章',
+    'access_callback' => TRUE,
+    'page_callback' => 'archives_page', // 回调表单
+  );
+  $items['admin/article/add'] = array(
+    'title' => '发表文章',
+    'access_callback' => 'article_is_edit',
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('article_node_form'),
+    'file' => 'article.form.inc',
+  );
+  $items['admin/article/%/edit'] = array(
+    'title' => '编辑文章',
+  	'load_functions' => array(2 => array('article_load')),
+    'access_callback' => 'article_is_edit',
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('article_node_form', 2),
+    'file' => 'article.form.inc',
+  );
+  $items['article/%/delete'] = array(
+    'title' => '删除文章',
+		'load_functions' => array(1 => array('article_load')),
+    'access_callback' => 'article_is_edit',
+    'page_callback' => 'article_delete', // 回调表单
+    'page_arguments' => array(1),
+  );
+  $items['admin/article'] = array(
+    'title' => '管理文章',
+    'access_callback' => 'article_is_edit',
+    'page_callback' => 'article_admin_page',
+    'file' => 'article.admin.inc',
+  );
+  $items['admin/article/duoxuan'] = array(
+    'title' => '多选',
+    'access_arguments' => TRUE,
+    'page_callback' => 'article_is_edit',
+    'file' => 'article.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * @Implement of hook_prem()
+ *  向系统注册权限
+ */
+function article_perm(){
+  /**
+   * if(user_access('article add')){ // 这样来判断当前用户是否有该权限 }
+   * 多语言字符串 t() 函数，多了一个参数：t('模块名称', '字符串')
+   * 这是为了同一个词语在不同模块中可以有不同翻译
+   */
+  return array(
+    'article add' => t('article', '发表文章'),
+    'article admin' => t('article', '编辑所有文章'),
+    'admin article fields' => t('article', '管理字段')
+  );
+}
+
+/**
+ * 判断编辑权限
+ * 
+ */
+function article_is_edit() {
+	if(user_access('article add') || user_access('article admin')){
+		return TRUE; 
+	}
+}
+
+function article_front(){
+	$arr[] = '新闻资讯';
+	dd_set_breadcrumb(array(l('新闻资讯','article')));
+	if($_REQUEST['page'] != ''){
+		$arr[] = '第'.$_REQUEST['page'].'页';
+	}
+	dd_set_title($arr);
+	dd_set_html_head('<meta name="keywords" content="" />');
+	dd_set_html_head('<meta name="description" content="" />');
+	$where = ' n.nid > 0';
+  if($fetch = pager_query('SELECT n.nid FROM {article} n WHERE '.$where.' ORDER BY n.nid DESC', 10, 0, NULL, array())){
+    
+    dd_set_html_head('<link rel="alternate" type="application/rss+xml" title="'.t('article', '订阅最新文章').'" href="/custom.php?module=article&op=feed&type=node" />');
+
+    foreach($fetch as $key=>$val){
+			$fetch[$key] = article_load($val->nid);
+		}
+    $output = theme('articlecategory', $fetch);
+  }else{
+    $output = system_no_content();
+  }
+  return $output;
+}
+
+function search_page(){
+	dd_set_title(array($_REQUEST['keyword']));
+	$data = module_invoke_all('search_page');
+	if($data){
+		foreach($data as $val){
+			$con .= $val;
+		}
+	}else{
+    $output = system_no_content();
+	}
+
+	return $con;
+}
+
+function article_search_page(){
+	$data = pager_query("SELECT nid FROM {article} WHERE title LIKE ? ORDER BY nid DESC", 10, 0, NULL,  array('%'.$_GET['keyword'].'%'));
+	if($data){  
+		foreach($data as $key=>$val){
+			$data[$key] = article_load($val->nid);
+		}
+
+    $output .= theme('search', $data);
+  }else{
+		$output .= system_no_content();
+	}
+
+	return $output;
+}
+
+function archives_page(){
+	$sdate = arg(2).'-1';
+	$tmp = explode('-', arg(2));
+	$days = date( "t",mktime(0,0,0,date($tmp[1]),date('1'),date($tmp[0])));
+	$edate = arg(2).'-'.$days;
+	$stime = strtotime($sdate);
+	$etime = strtotime($edate);
+	$data = pager_query("SELECT nid FROM {article} WHERE timestamp >= ? AND timestamp <= ?", 10, 0, NULL,  array($stime, $etime));
+	if($data){  
+		foreach($data as $key=>$val){
+			$data[$key] = article_load($val->nid);
+		}
+
+    $output .= theme('articlecategory', $data);
+  }else{
+    $output = system_no_content();
+  }
+	return $output;
+}
+
+function sitemap_xml(){
+	header('Content-type: application/xml');
+	$content = '<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
+	$data = module_invoke_all('sitemap_front');
+	foreach($data as $val){
+		$content .= '
+	<sitemap>
+		<loc>http://'.$_SERVER['HTTP_HOST'].$val->url.'</loc>
+		<lastmod>'.date('Y-m-d H:i:s', $val->created).'</lastmod>
+	</sitemap>';
+	}
+	$content .= '
+</sitemapindex>';
+	echo $content;exit();
+}
+
+function article_sitemap_front(){
+	$data = article_list('', 0, 100);
+	return $data;
+}
+
+function article_page($article){
+	if ($article->status == 0) {
+		header('HTTP/1.1 404 Not Found');
+		sleep(1);
+		dd_goto('/');
+		exit();
+	}
+	dd_set_title(array($article->title));
+	if(strpos($_SERVER['REQUEST_URI'], 'html') == '' || strpos($_SERVER['REQUEST_URI'], 'article') != ''){
+		dd_goto(intval(arg(1)) . '.html');
+		exit();
+	}
+
+	dd_jqui();
+	
+	if(!is_odd($article->fields['lanmu']->weight) && $article->fields['lanmu']->tid != ''){
+		$bread = field_term_breadcrumb($article->fields['lanmu']->tid);
+		foreach($bread as $val){
+			$brr[] = l($val->name,'category/'.$val->tid);
+		}
+	}
+	$brr[] = l($article->title, 'article/'.$article->nid);
+	dd_set_breadcrumb($brr);
+	dd_set_html_head("<meta name=\"description\" content=\"$article->description\" />");
+	db_exec('UPDATE {article} SET click = click + 1 WHERE nid = ?', array($article->bid));
+	return theme('article', $article);
+}
+
+function tags_page(){
+	$data = module_invoke_all('tags_page');
+	$content .= '<div class="tags_page">';
+  if($data){foreach($data as $val){
+		$content .= '<li class="tags">'.l($val->name, 'tag/'.$val->tid).'</li>';
+	}}
+	$content .= '</div>';
+
+	return $content;
+}
+
+function article_tags_page(){
+	$data = db_query("SELECT * FROM {fields_term} ft WHERE weight = -10 AND field_id = 2");
+
+	return $data;
+}
+
+function tag_category(){
+	if(arg(0) == 'tag' && arg(1) != ''){
+		$tag = db_query('SELECT ft.* FROM {fields_term} ft LEFT JOIN {fields} f ON ft.field_id = f.field_id WHERE f.field_type = ? AND ft.tid = ? ORDER BY ft.tid ASC', array('tags', arg(1)), array('return' => 'one'));
+
+		dd_set_breadcrumb(array($tag->name));
+		dd_set_title(array($tag->name));
+		dd_set_html_head('<meta name="keywords" content="'.$tag->name.','.$tag->description.'" />');
+
+		return theme('tag', $tag);
+	}
+}
+/**
+ * @Implement of hook_site_menu()
+*/ 
+function article_site_menu(&$menu) {
+	unset($menu['user'],$menu['admin'],$menu['yuyue']);
+	$data = get_term_byvname('lanmu', 'article', 10);
+	if($data){foreach($data as $key=>$val){
+		if($val->weight == '20'){
+			unset($data[$key]);
+		}else{
+			if(is_odd($val->weight)){
+				$data = article_list($val->tid, 0, 1, '', 'n.nid ASC');
+				$article = $data[0];
+				$menu[$val->tid]['#data'] = l($article->title, 'article/'.$article->nid);
+				//$menu[$val->tid]['#childrens'] = article_sub_menu($val->tid, 'node');
+			}else{
+				$menu[$val->tid]['#data'] = l($val->name, 'category/'.$val->tid);
+				//$menu[$val->tid]['#childrens'] = article_sub_menu($val->tid);
+			}
+			$menu[$val->tid]['#weight'] = $val->weight;
+		}
+	}}
+}
+
+/*
+获取栏目子栏目当下拉菜单
+*/
+function article_sub_menu($tid = NULL, $type = 'term'){
+	if($type == 'node'){
+		$subterms = article_list($tid, 0, 10, 1);
+		foreach($subterms as $m){
+			$link[] = l($m->title, $m->url);
+		}
+
+		return $link;
+	}
+	$subterms = get_sonterm_bytid($tid);
+	foreach($subterms as $m){
+		$link[] = l($m->name,'category/'.$m->tid);
+	}
+
+	return $link;
+}
+
+/**
+ * @Implement of hook_system_admin_menus()
+ * 向系统注册管理菜单
+ */
+function article_system_admin_menus(){
+	$field_id = db_query('SELECT field_id FROM {fields} WHERE module = ? AND field_key = ?', array('article', 'lanmu'), array('return' => 'column'));
+  return array(array(
+    array(t('article', '发表文章'), 'admin/article/add'),
+    array(t('article', '文章管理'), 'admin/article'),
+		//array(t('article', '栏目管理'), url('admin/article/fields', array('query' => 'field_op=custom&field_custom=view&field_field_id='.$field_id))),
+    array(t('article', '文章字段'), 'admin/article/fields'),
+  ), t('article', '文章模块'));
+}
+
+/**
+ * @Implement of hook_theme()
+ * 定义 theme
+*/ 
+function article_theme(){
+  return array(
+    'article' => array(
+      'tpl' => 'node.tpl.php', // 加载的 tpl.php，必须放在模块的 tpl 文件夹内。如复制一份到主题文件夹，优先级比模块文件夹中高
+      'args' => array('article'), // 传递到 tpl.php 中的变量
+    ),
+		'tag' => array(
+      'tpl' => 'tag.tpl.php', // 加载的 tpl.php，必须放在模块的 tpl 文件夹内。如复制一份到主题文件夹，优先级比模块文件夹中高
+      'args' => array('tag'), // 传递到 tpl.php 中的变量
+    ),
+		'articlecategory' => array(
+      'tpl' => 'category.tpl.php', // 加载的 tpl.php，必须放在模块的 tpl 文件夹内。如复制一份到主题文件夹，优先级比模块文件夹中高
+      'args' => array('data'), // 传递到 tpl.php 中的变量
+    ),
+		'search' => array(
+      'tpl' => 'search.tpl.php', // 加载的 tpl.php，必须放在模块的 tpl 文件夹内。如复制一份到主题文件夹，优先级比模块文件夹中高
+      'args' => array('data'), // 传递到 tpl.php 中的变量
+    )
+  );
+}
+
+/**
+ * @Implement of hook_field_call_group()
+ * 注册一个 field 组，一个模块可以注册多个 field 组
+ */
+function article_field_call_group($type = NULL){
+  $groups = array(
+    'my_field' => array(
+      'title' => t('article', '文章字段'),
+      'sum' => 0,
+      'level' => 0,
+    )
+  );
+  return $type ? $groups[$type] : $groups;
+}
+
+/**
+ * 载入文章
+ */
+function article_load($nid){
+  /**
+   * 数据库连接使用 PDO，类似于 drupal 7
+   */
+	static $article;
+
+	if ($article->nid != $nid) {
+		if($article = db_query('SELECT n.* FROM {article} n  WHERE n.nid = ?', array($nid), array('return' => 'one'))){
+			field_get_node_load('article', 'my_field', $article);             // 加载这篇 文章下的自定义字段
+			$article->date = date('Y-m-d H:i:s', $article->timestamp);
+			if(!$article->description){
+				$article->description = mb_substr(strip_tags(str_replace('	', '', $article->body)),0,120, 'utf-8');
+			}
+			$article->url = url($article->nid . '.html');
+			module_invoke_all('article_load', $article);
+		}
+	}
+	
+	return $article;
+}
+
+/**
+ * 保存文章
+ */
+ function article_save($v){
+  // 插入、更新 用db_exec()
+  global $user;
+
+  if(!$v['uid']){$v['uid'] = $user->uid;}
+	if(!$v['created']){
+		$v['created'] = time();
+	}else{
+		
+	}
+	$v['updated'] = time();
+	if(!$v['referer']){
+		$v['referer'] = '';
+	}
+	$v['click'] = rand(100,500);
+	
+	if($v['nid']){ // 更新
+		$args = array('nid');
+    if(db_write_record('article', $v, $args)){
+			$value = (object) $v;
+			field_get_node_save('article', 'my_field', $value);
+		}
+  }else{
+		if(db_write_record('article', $v)){
+			$value = (object) $v;
+			if($value->nid = db_last_insert_id()){	
+				// 保存数据，字段数据将与 nid 相关联
+				field_get_node_save('article', 'my_field', $value);
+			}
+		}
+		// 创建成功
+		// 保存字段数据，也必须是对象
+	}
+
+  module_invoke_all('article_save', $value);
+	if($value->status == 1){
+		article_set_ping($value);
+	}
+  //dd_goto(dd_get_cookie('redirect'));
+	return $value;
+}
+
+function article_delete($article){                                                  //删除文章
+  if(db_exec('DELETE FROM {article} WHERE nid = ?', array($article->nid))){
+    field_get_node_delete('article','my_field',$article);             //删除文章自定义字段
+		
+		dd_goto(dd_get_history());
+  }
+}
+
+function article_list($tid = '', $start = 0, $limit = 10, $flag = '', $order = '', $alltid = 0, $term = 0, $litpic = 1, $module = 'article'){ 
+  //获取指定分类分类信息列表,没有$tid时按顺序取最后的几个节点
+	$args = array();
+	$where = ' WHERE n.nid>0 AND n.status = 1';
+  if($tid){
+		$where .= ' and ftn.tid>0';
+		if($alltid == 1){
+			$tids = get_allterm_bytid($tid);
+		}else{
+			$tids = array($tid);
+		}
+    //$args[] = $tids;
+    $where .= " and ftn.tid in (".implode(',',$tids).")";
+  }   
+	if($order == ''){
+		$order = 'ORDER BY n.nid DESC';
+	}else{
+		$order = 'ORDER BY '.$order;
+	}
+  if($flag){
+    $where .= ' and n.flag = ?';
+    $args[] = $flag;        
+  }
+	if($term == 1){
+		$re = ',ft.name as tname,ft.tid';
+		$join .= ' INNER JOIN {fields_term} ft ON ftn.tid = ft.tid';
+	}
+	if($litpic == 1){
+		$re .= ',f.filepath';
+		$join .= ' LEFT JOIN {files} f ON n.fid = f.fid';
+	}
+	if(!$tid && !$term){
+		$fetch = db_query('SELECT n.*,u.name'.$re.' FROM {'.$module.'} n LEFT JOIN {users} u ON n.uid = u.uid '.$join.' '.$where .' '.$order, $args, array('limit' => array($start,$limit)));
+	}else{
+		$fetch = db_query('SELECT DISTINCT n.nid,n.*'.$re.',u.name FROM {'.$module.'} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid LEFT JOIN {users} u ON n.uid = u.uid '.$join.' '.$where.' '.$order, $args, array('limit' => array($start,$limit)));
+	}
+	foreach($fetch as $key=>$article){
+		field_get_node_load('article', 'my_field', $article);             // 加载这篇 文章下的自定义字段
+    if(!$article->description && $article->body){
+      $article->description = mb_substr(strip_tags($article->body),0,100,'utf-8');
+    }
+		
+		$article->url = url($article->nid . '.html');
+	}
+
+	return $fetch;
+}
+
+function article_category_list($tid = '', $module = 'article', $num = 10){                  //指定分类列表分页
+	$args = array();
+	if($tid){
+		$args = array($tid);
+		$join = ' INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid';
+		$where = ' and ftn.tid>0 and ftn.tid = ?';
+	}
+	$fetch = pager_query('SELECT n.*,f.filepath FROM {'.$module.'} n LEFT JOIN {files} f ON n.fid = f.fid '.$join.' WHERE n.nid>0 '.$where.' ORDER BY n.nid DESC', $num, 0, NULL, $args);
+	if($fetch){
+		$fun = $module.'_load';
+		foreach($fetch as $key=>$article){
+			$fetch[$key] = call_user_func($fun,$article->nid);
+		}
+	}
+	return $fetch;
+}
+
+function sitemap_list($module = 'article'){                  //指定类型列表分页
+	$fetch = pager_query('SELECT * FROM {'.$module.'} n ORDER BY n.nid DESC', 10, 0, NULL);
+
+	return $fetch;
+}
+
+/**
+ * @Implement of hook_field_term_view()
+ * 默认栏目显示
+ */
+function article_field_term_view($term, $num = 10){
+	if(!is_odd($term->weight) && $term->tid != ''){
+		$bread = field_term_breadcrumb($term->tid);
+		foreach($bread as $val){
+			$brr[] = l($val->name,'category/'.$val->tid);
+		}
+	}
+	dd_set_breadcrumb($brr);
+	dd_set_html_head('<meta name="keywords" content="'.$term->description.'" />');
+	dd_set_html_head('<meta name="description" content="'.$term->description.'" />');
+	if($_REQUEST['page'] != ''){
+		dd_set_title(array($term->name.' - 第'.$_REQUEST['page'].'页', $term->field->name));
+	}
+
+	$where = ' n.nid > 0 AND n.status = 1';
+	$tids = get_allterm_bytid($term->tid);
+	$where .= " and ftn.tid in (".implode(',',$tids).")";
+
+	if($fetch = pager_query('SELECT n.nid FROM {article} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid WHERE '.$where.' ORDER BY n.updated DESC', $num, 0, NULL, array($term->tid))){
+    
+    dd_set_html_head('<link rel="alternate" type="application/rss+xml" title="'.t('article', '订阅最新新闻').'" href="/custom.php?module=article&op=feed&type=node&tid='.$term->tid.'" />');
+
+    foreach($fetch as $key=>$val){
+			$fetch[$key] = article_load($val->nid);
+		}
+    $output = theme('articlecategory', $fetch);
+  }else{
+    $output = system_no_content();
+  }
+  return $output;
+}
+/*
+function article_alter_admin_menus($module, &$menus) {
+  switch ($module) {
+    case 'block':	
+      $menus = '';
+		break;
+  }
+}
+*/
+function front_search_form(){
+  $form['fields']['title'] = array(
+    '#title' => t('title', '搜索词'),
+    '#type' => 'textfield',
+    '#default_value' => $_GET['title'],
+    '#weight' => -10,
+		'#required' => 1,
+    '#attributes' => array('size' => 10)
+  );
+  $form['fields']['submit'] = array(
+    '#default_value' => t('article', '搜索'),
+    '#type' => 'image',
+		'#src' => path_to_theme().'/images/searchr.jpg',
+    '#submit' => 'front_search_form_submit', // 提交时回调函数
+    '#weight' => 100
+  );
+
+	return $form;
+}
+
+function front_search_form_submit(&$form,&$v){
+	dd_goto('article', array('title' => $v['title']));
+}
+
+function search_form($vid = NULL, $type = 'article'){
+	if($vid){
+		$field = field_get_cache_field_id($type,'my_field',$vid);	
+		field_get_multi_level_field($field,$_GET['tid'],$form);
+	}
+
+	$fetch = db_query('SELECT uid,name FROM {users} WHERE uid > 0');
+
+	$options[] = '请选择';
+	foreach($fetch as $val){
+		$options[$val->name] = $val->name;
+	}
+
+  $form['fields']['title'] = array(
+    '#title' => t('title', '标题'),
+    '#type' => 'textfield',
+    '#default_value' => $_GET['title'],
+    //'#required' => 1,
+    '#weight' => -10,
+    '#attributes' => array('size' => 10)
+  );
+  $form['fields']['username'] = array(
+    '#title' => t('username', '用户'),
+    '#type' => 'select',
+    '#default_value' => $_GET['username'],
+    '#options' => $options,
+    '#weight' => -10,
+  );
+  $form['fields']['submit'] = array(
+    '#default_value' => t('article', '搜索'),
+    '#type' => 'submit',
+    '#submit' => 'search_form_submit', // 提交时回调函数
+    '#weight' => 100
+  );
+
+	return $form;
+}
+
+function search_form_submit(&$form,&$v){
+	if($v['fields']){
+		$tid = end($v['fields']);                     //获取搜索栏目id
+	}
+	dd_goto($_GET['q'], array('title' => $v['title'],'tid' => $tid,'username' => $v['username']));
+}
+
+/**
+ * @Implement of hook_call_custom()
+ */
+function article_call_custom($v){
+  global $conf, $base_url;
+  switch($v['op']){
+    case 'feed':
+      require dd_get_path('module', 'article') . '/article.feed.inc';
+      
+      if($_GET['type'] == 'node'){
+        dd_set_header('Content-Type: application/xml; charset=utf-8');
+          /**
+           * 默认：获取全站最新文章
+           * $_GET['uid']：用户 id，获取该用户最新文章
+           */
+          echo article_get_feed_node($uid = NULL,$tid = $_GET['tid']);
+      }else{
+        echo 'byebye';
+      }
+    break;
+  }
+  exit;
+}
+
+/**
+* hook_cron
+*/
+function article_cron(){
+  
+}
+
+/**
+ * 发送 ping百度等
+ */
+function article_set_ping($node){
+  global $conf, $base_url;
+  
+	$node = article_load($node->nid);
+  $data['params'] = array(
+    $conf['site_global']['name'], // 网站名称
+    $base_url, // 网站首页
+    url($base_url.$node->url, array('absolute' => true)),
+  );
+
+  return dd_set_ping($data);
+}
+
+/**
+ * @Implement of hook_system_cache_clear()
+
+function article_field_system_cache_clear($op = 'list', $v = NULL) {
+  switch ($op) {
+    case 'list':
+    return array(
+      'fields' => t('field', '清除字段缓存，当字段信息发生更改时应选择此项'),
+    );
+    case 'submit':
+      if ($v['value']['fields']) {
+        field_get_cache_field(NULL, 1);
+        field_set_cache_term();
+      }
+  }
+}
+ */
+function get_next_node($nid, $tid = NULL, $module = 'article'){
+	$arg = array($nid);
+	if($tid){
+		$arg[] = $tid;
+		$join = 'INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid';
+		$where = 'AND ftn.tid = ?';
+	}
+	$next = db_query('SELECT n.title,n.nid FROM {'.$module.'} n '.$join.' WHERE n.status = 1 AND n.nid < ? '.$where.' ORDER BY n.nid DESC', $arg, array('return' => 'one'));
+	$prev = db_query('SELECT n.title,n.nid FROM {'.$module.'} n '.$join.' WHERE n.status = 1 AND n.nid > ? '.$where.' ORDER BY n.nid ASC', $arg, array('return' => 'one'));
+  if($prev->nid){
+    $prev = l('下一篇：'.$prev->title, $prev->nid.'.html');
+	}
+	if($next->nid){
+    $next = l('上一篇：'.$next->title, $next->nid.'.html');
+	}
+	return '<div class="nextnode fr">'.$prev.'</div><div class="prevnode fl">'.$next.'</div>';        //上一篇链接;        //下一篇链接
+}
+
+function get_username_byuid($uid){
+	$fetch = db_query('SELECT name FROM {users} WHERE uid = ?', array($uid), array('return' => 'column'));
+
+	return $fetch;
+}
+
+function get_term_bytid($tid){                  //获取所有的列表内容
+	$fetch = db_query('SELECT * FROM {fields_term} WHERE tid = ?', array($tid), array('return' => 'one'));
+
+	return $fetch;
+}
+
+function get_field_byvid($vid){                  //获取所有的列表内容
+	$fetch = db_query('SELECT * FROM {fields} WHERE field_id = ?', array($vid), array('return' => 'one'));
+
+	return $fetch;
+}
+
+function get_term_byvid($vid, $num = 1000){                  //获取所有的列表内容
+	$fetch = db_query('SELECT * FROM {fields_term} WHERE field_id = ? AND pid=0 ORDER BY weight ASC', array($vid), array('limit' => array(0,$num)));
+
+	return $fetch;
+}
+
+function get_term_byvname($vname, $module = 'article', $num = 10, $start = 0){                  //获取所有的列表内容
+	$args = array($vname);
+	if($module){
+		$where .= "and f.module = ?";
+		$args[] = $module;
+	}
+	if($num == 10){
+		$where .= " ORDER BY ft.tid ASC LIMIT 0,10";
+	}else{
+		$where .= " ORDER BY ft.weight ASC,ft.tid ASC LIMIT $start,".$num;
+	}
+	$fetch = db_query('SELECT ft.* FROM {fields_term} ft LEFT JOIN {fields} f on ft.field_id = f.field_id WHERE f.field_key = ? AND ft.pid=0 AND ft.weight < 10 '.$where, $args);
+	if($fetch){
+		foreach($fetch as $val){
+			$val->url = url('category/'.$val->tid);
+		}
+	}
+
+	return $fetch;
+}
+
+function get_tags_bytid($tid = NULL, $module = 'article', $num =10){
+	if(arg(0) == 'category' && arg(2) == ''){
+		if(!$tid){
+			$tags = get_term_byvname('tags', $module, $num);
+			return $tags;
+		}
+		$fetch = db_query('SELECT DISTINCT ftn1.tid FROM {fields_term_node} ftn INNER JOIN {fields_term_node} ftn1 ON ftn.nid = ftn1.nid WHERE ftn.tid = ? AND ftn1.tid != ? LIMIT 0,'.$num, array($tid, $tid));
+		foreach($fetch as $val){
+			$tags[] = get_term_bytid($val->tid);
+		}
+		
+		return $tags;
+	}
+}
+
+function get_sonterm_bytid($tid, $num = 10, $start = 0){
+	$fetch = db_query('SELECT * FROM {fields_term} WHERE pid = ? ORDER BY tid ASC', array($tid), array('limit' => array($start,$num)));
+	if($fetch){
+		foreach($fetch as $val){
+			$val->url = url('category/'.$val->tid);
+		}
+	}
+	
+	return $fetch;
+}
+
+/**
+ *根据tid递归获取所有子级tid
+ */
+function get_allterm_bytid($tid) {
+	if ($cache = cache_get('allterm'.$tid)) {
+		
+	} else {
+		$terms = get_sonterm_bytid($tid);	
+		$parent[] = $tid;
+		foreach($terms as $val){
+				if ($fetch = db_query('SELECT COUNT(*) FROM {fields_term} WHERE pid = ?', array($val->tid))) {
+					if ($childrens = get_allterm_bytid($val->tid)) {
+						$parent = array_merge($parent, $childrens);
+					}
+				}
+				$parent[] = $val->tid;
+		}
+		$cache->data = $parent;
+		cache_set('allterm'.$tid, $parent);
+	}
+
+  return $cache->data;
+}
+
+function field_term_breadcrumb($tid){
+	$key = 'field_term_breadcrumb_'.$tid;
+	if($cache = cache_get($key)){
+		$rows = $cache->data;
+	}else{
+		$levelpid = get_allpid_bytid($tid);
+		$levelpid = explode(',', $levelpid);
+		foreach($levelpid as $val){
+			$rows[] = get_term_bytid($val);
+		}
+		cache_set($key,$rows);
+	}
+
+	return $rows;
+}
+/**
+ *根据tid递归获取所有父级tid  breadcrumb使用
+ */
+function get_allpid_bytid($tid){
+	static $str;
+	$term = field_term_load($tid);
+	if ($term->pid > 0)
+	{
+		$topterm = get_allpid_bytid($term->pid);
+		$str .= $topterm->pid.',';
+	}
+	$str .= $tid;
+
+	return $str;
+}
+
+function get_term_bynid($nid, $type='lanmu', $module = 'article'){
+	$fetch = db_query('SELECT ft.* FROM {fields_term} ft LEFT JOIN {fields_term_node} ftn on ft.tid = ftn.tid LEFT JOIN {fields} f ON ft.field_id = f.field_id WHERE ftn.nid = ? and f.field_key = ? and f.module = ?', array($nid, $type, $module), array('return' => 'one')) ;
+
+	return $fetch;
+}
+
+function get_tags_bynid($nid){
+	$fetch = db_query('SELECT * FROM {fields_term} ft LEFT JOIN {fields_term_node} ftn on ft.tid = ftn.tid WHERE ftn.nid = ?', array($nid)) ;
+
+	return $fetch;
+}
+
+function path_to_theme($theme = ''){
+	global $conf;
+	if($theme == ''){
+		$theme = $conf['default_theme'];
+	}
+	return '/'.$conf['themes'][$theme]['path'];
+}
+
+function get_litpic($val,$size='80x60'){
+
+  $fields = $val->fields;
+
+	if($val->filepath){
+		$litpic = image_get_thumb($val->fid,$val->filepath,$size,'scale_and_crop');
+	}elseif($val->litpic){
+		$litpic = image_get_thumb($val->fid,$val->litpic,$size,'scale_and_crop');
+	}elseif($fields['litpic'] && strpos($fields['litpic']->text, 'ttp') == ''){
+		if($fields['litpic']->text != ''){
+			$litpic = $fields['litpic']->text;
+		}else{
+			$file = reset($fields['litpic']);
+			$litpic = image_get_thumb($file->fid,$file->filepath,$size,'scale_and_crop');
+		}
+	}else{
+		$litpic = one_pic($val->body);
+	}
+
+	return $litpic;
+}
+/*------------取第一张图为缩略图------------*/
+function one_pic($count)
+{
+	$pat = '/<img(.*?)src=\"(.*?)"(.*?)>(.*?)/is';
+	preg_match($pat, $count ,$pic);
+	if (empty($pic[2][0])){
+		$litpic = 'sites/files/nopic.jpg';
+	}else{
+		if(strpos($pic[2],'http')){
+			$litpic = substr($pic[2], 1);
+		}else{
+			$litpic = substr($pic[2], 1);
+		}
+	}
+
+	return $litpic;
+}
+
+function article_form_alter($form_id, $form_token, &$form){
+	if($form_id == 'user_login_form'){
+		//echo 'aaa';
+	}elseif($form_id == 'comment_form'){
+		/*
+		if(arg(0) == 'forum'){
+			dd_get_baidueditor('comment_form_type_body', array(
+				'toolbar' => 'small', // 编辑器按钮，可选参数:full small
+				'upload_image' => 1, // 是否允许上传图片
+				'height' => 60, // 高度
+				'swfupload' => 1,
+			));
+		}
+		*/
+	}elseif($form_id == 'block_add_form'){
+		/*文本编辑器
+		dd_get_editor_text('#block_add_form_type_body', '', array(
+			'toolbar' => array(
+				'img', 'a'
+			),
+			'upload_image' => 1,
+			'height' => 200, 
+		)); 
+		
+		dd_get_editor('block_add_form_type_body', array(
+			'toolbar' => 'full', // 编辑器按钮，可选参数:full small
+			'upload_image' => 1, // 是否允许上传图片
+			'height' => 300, // 高度
+			'swfupload' => 1,
+		));*/
+	}elseif($form_id == 'form_admin_search'){
+		if(arg(3) == 'wxx'){
+			$form['fields']['caiji']['#value'] = '一键同步';
+			$form['fields']['caiji']['#type'] = 'button';
+		}
+	}elseif($form_id == 'content_form'){
+		if(arg(2) == 'line'){
+			dd_get_baidueditor('content_form_type_fields_xcts', array(
+				'toolbar' => 'full', // 编辑器按钮，可选参数:full small  medium
+				'upload_image' => 1, // 是否允许上传图片
+				'height' => 300, // 高度
+				'swfupload' => 1,
+			));
+			dd_get_baidueditor('content_form_type_fields_ctxz', array(
+				'toolbar' => 'full', // 编辑器按钮，可选参数:full small  medium
+				'upload_image' => 1, // 是否允许上传图片
+				'height' => 300, // 高度
+				'swfupload' => 1,
+			));
+		}
+		/*
+		$js = array(
+			'dom' => '.ui_date_click',
+			'dateFormat' => 'yy-mm-dd',
+		);
+		dd_add_js(array('uidata' => array($js)), 'setting');
+		$form['fields']['created']['#title'] = '发布日期';
+		$form['fields']['created']['#type'] = 'textfield';
+		$form['fields']['created']['#weight'] = '-10';
+		$form['fields']['created']['#default_value'] = date('Y-m-d', $form['__args'][1]->created);
+		$form['fields']['created']['#attributes'] = array('class' => 'ui_date_click ui_date_click_25');
+		*/
+	}
+}
+
+function is_odd($num){
+  return (is_numeric($num)&($num&1));
+}
+
+/**
+ * 载入自定义(即管理员后台手动添加)区块信息
+ */
+function block_title_load($title) {
+  return db_query('SELECT * FROM {boxes} WHERE title = ?', array($title), array('return' => 'one'));
+}
+
+/**
+ * 获取下拉导航，触发 hook_site_menu()
+ * @param array $menus
+ *  导航菜单，若无，则执行 hook_site_menu
+ * @param bool $fisrt
+ *  第一次调用，添加 js 代码，以实现下拉效果
+ * @return (string)
+ */
+function dd_get_menu_data($menus = NULL, $fisrt = true) {
+  if (!isset($menus)) {
+    $menus = array();
+    module_alter_all('site_menu', $menus);
+    $class = 'site_menu';
+  } else {
+    $class = 'site_menu_children';
+  }
+	  // 取得列的列表
+	foreach ($menus as $key => $row) {
+		$new[$key] = $row['#weight'];
+	}
+
+	// 将数据根据 volume 降序排列，根据 edition 升序排列
+	// 把 $data 作为最后一个参数，以通用键排序
+	array_multisort($new, SORT_ASC, $menus);
+  
+	return $menus;
+}
+/**
+ * @Implement of hook_comment_is_update()
+ */
+function article_comment_is_create($comment) {
+  if ($comment->ext_type == 'article') {
+    $comment->is_create = 1;
+  }
+}
+/**
+ * 评论接口
+ **/
+function article_comment_info(){
+	return array(
+    'article' => array(
+			'name' => '评论',  // 评论名称
+			'field_title' => false, // 启用标题，默认为 true
+			'user_anonymous' => true, // 允许匿名评论，默认为 false
+		/*'user_anonymous_mail' => true, // 匿名评论必须输入邮箱，默认为 true
+			'user_anonymous_username' => true, // 匿名评论必须输入昵称，默认为 true
+			'user_anonymous_site' => false, // 匿名评论必须输入主页，默认为 false
+			'field_title_required' => false, // 必须输入标题，默认为 false
+			'field_title_max' => 255, // 标题最大长度，不超过 255
+			'field_title_min' => 0, // 标题最小长度
+			'field_body_required' => true, // 必须输入评论内容，默认为 true
+			'field_body_max' => 50000, // 内容最大长度
+			'field_body_min' => 2, // 内容最小长度
+			'field_captcha_all' => false, // 针对所有人启用验证码，默认为 false
+			'field_captcha_anonymous' => true, // 针对匿名用户启用验证码，默认为 true
+			'captcha_image' => '55x16', // 图形验证码的宽高，若不使用图形验证码，赋值为 false
+			'captcha_type' => DIDA_CAPTCHA_TYPE_INT, // 验证码文本类型
+			'default_status' => 1, // 评论状态，默认为 0：未审核
+			*/
+			// 'editor_html' => 0, // 加载  html 编辑器
+			// 'editor_text' => 0, // 加载 文本编辑器
+			// 'default_format' => 0, // 输入格式，留空则使用默认
+			// 'from_update_call' => 'function', // 载入编辑表单时回调函数，如： test(&$form, &$comment) { }
+			// 'from_insert_call' => 'function', // 载入添加表单时回调函数，如： test(&$form) { }
+		)
+	);
+}
+
+/**
+ *
+ */
+function article_comment($article, $num = 10){
+	if ($data = comment_ext_view('article', $article->nid,  $num)) {
+		$output = $data->view;
+		$output .= $data->pager;
+  }
+	$comment = new stdClass;
+	$comment->ext_type = 'article';
+	$comment->ext_id = $article->nid;
+	$comment->title = t('article', '回答：!title', array('!title' => $article->title));
+	$output .= dd_get_form('comment_form',$comment);
+	return $output;
+}
+
+function article_mylike_setting($type = 'article', $value = array()){
+	$array = array('is_login' => 1);
+	return $array;
+}
+
+/*
+ *hook_system_cache_clear
+ */
+function article_system_cache_clear($op = 'submit', $value = NULL){
+	if($value['admin_check_all'][0] == 'on'){
+		cache_del('*', 'field_term_breadcrumb_');
+	}
+}
+
+/**
+ * @Implement of hook_block_list()
+ */
+function article_block_list($theme) {
+  return array(
+    'top_article' => array(
+        'title' => '热点文章',
+        'visibility' => 1,
+				'region' => 'right',
+        'weight' => -30
+      ),
+		'rand_article' => array(
+        'title' => '随机文章',
+				'region' => 'right',
+        'visibility' => 1,
+        'weight' => -30
+     ),
+			'guidang_article' => array(
+        'title' => '文章归档',
+				'region' => 'right',
+        'visibility' => 1,
+        'weight' => -30
+      ),
+			'tags_article' => array(
+        'title' => '文章标签',
+				'region' => 'right',
+        'visibility' => 1,
+        'weight' => -30
+      ),
+			'theme_select' => array(
+        'title' => '主题选择',
+				'region' => 'right',
+        'visibility' => 1,
+        'weight' => 30
+      ),
+    );
+}
+
+/**
+ * @Implement of hook_block_view()
+ */
+function article_block_view($theme, $config = object) {
+	if($config->delta == 'top_article'){
+		$title = '热点文章';
+		$data = article_list('', 0, 10, 's');
+		if($data){
+			foreach($data as $val){
+				$content .= '<li><a href="'.$val->url.'">'.$val->title.'</a></li>';
+			}
+		}
+	}elseif($config->delta == 'rand_article'){
+		$title = '随机文章';
+		$data = article_list('', 0, 10, '', 'rand()');
+		if($data){
+			foreach($data as $val){
+				$content .= '<li><a href="'.$val->url.'">'.$val->title.'</a></li>';
+			}
+		}
+	}elseif($config->delta == 'guidang_article'){
+		$title = '文章归档';
+		$data = db_query("select FROM_UNIXTIME(timestamp, '%Y-%m') as pubtime, count(*) as num from {article} group by FROM_UNIXTIME(timestamp, '%Y-%m')");
+		if($data){
+			foreach($data as $val){
+				$content .= '<li><a href="'.url('archives/article/'.$val->pubtime).'">'.$val->pubtime.'('.$val->num.')</a></li>';
+			}
+		}
+	}elseif($config->delta == 'tags_article'){
+		$title = '文章标签';
+		$data = get_term_byvname('tags', 'article', '10');
+		if($data){
+			foreach($data as $val){
+				$content .= '<li><a href="'.$val->url.'">'.$val->title.'</a></li>';
+			}
+		}
+	}elseif($config->delta == 'theme_select'){
+		$title = '主题选择';
+		$content = dd_get_form('theme_select_form');
+	}
+
+	return array(
+		'title' => $title,
+		'content' => $content
+	);
+}
+
+function theme_select_form(){
+	$fetch = db_query('SELECT filename FROM {system} WHERE type = ? AND status != 0 AND filename != ?', array('theme', 'admin'));
+	
+	$options[] = '请选择';
+	foreach($fetch as $val){
+		$options[$val->filename] = $val->filename;
+	}
+  $form['fields']['theme'] = array(
+    '#title' => '主题',
+    '#type' => 'select',
+    '#options' => $options,
+    '#weight' => -10,
+		'#required' => 1,
+  );
+  $form['fields']['submit'] = array(
+    '#default_value' => '提交',
+		'#type' => 'submit',
+    //'#type' => 'image',
+		//'#src' => path_to_theme().'/images/searchr.jpg',
+    '#submit' => 'theme_select_submit', // 提交时回调函数
+    '#weight' => 100
+  );
+
+	return $form;
+}
+
+function theme_select_submit(&$form,&$v){
+	global $conf;
+
+	if($_REQUEST['theme']){
+		dd_set_cookie('default_theme', $_REQUEST['theme']);
+	}
+}
+
+function article_init(){
+	global $conf;
+	
+	$agent = strtolower($_SERVER['HTTP_USER_AGENT']);
+	if(strpos('%%'.$agent, 'android') != '' || strpos('%%'.$agent, 'iphone') != '' || strpos('%%'.$agent, 'mqqbrowser') != '' || strpos('%%'.$agent, 'ucweb') != ''){
+		$conf['default_theme'] = 'phone';
+	}elseif($_REQUEST['act'] == 1){
+		$conf['default_theme'] = 'phone';
+	}
+	if(arg(0) != 'admin'){
+		if($_GET['theme'] == 'pc'){
+			$_SESSION['default_theme'] = 'exo';
+			$conf['default_theme'] = 'exo';
+		}elseif($_GET['theme'] == 'phone'){
+			$_SESSION['default_theme'] = 'phone';
+			$conf['default_theme'] = 'phone';
+		}
+
+		if($_SESSION['default_theme'] != ''){
+			$conf['default_theme'] = $_SESSION['default_theme'];
+		}else{
+
+		}
+	}	
+}
+
+/**
+ * 获取文章内容(当前分页)
+ * 
+ * @param string $content 文章内容
+ * @param integer $page 页数
+ * @return array
+ */
+function get_article_content($content){
+    if($_GET['page'] != ''){
+			$page = $_GET['page'];
+		}else{
+			$page = 1;
+		}
+    $article = array(
+        'info' => array(),
+        'pages' => 1
+    );
+    if(!empty($content)){
+        $pattern = "/_baidu_page_break_tag_/";
+        $contents = preg_split($pattern, $content);
+        $article['pages'] = count($contents);
+        ($page > $article['pages']) && $page = $article['pages'];
+        $content = $contents[$page - 1];
+    }
+		$con['body'] = closetags($content);
+    if($article['pages']>1){
+			$info .= '<div class="apage">';
+			if($_GET['page'] - 1 > 1){
+				$page = $_GET['page'] - 1;
+				$info .= l('上一页', $_GET['q'], array('attributes' =>array('class' => 'first blue'),'query' => array('page' => $page)));
+			}elseif($_GET['page'] - 1 == 1){
+				$info .= l('上一页', $_GET['q'], array('attributes' =>array('class' => 'first blue')));
+			}
+			for($i = 1; $i <= $article['pages']; $i++){
+				if($i == 1){
+					$info .= l($i, $_GET['q']);
+				}else{
+					$info .= l($i, $_GET['q'], array('query' => array('page' => $i)));
+				}
+			}
+			if($_GET['page'] + 1 < $i){
+				if($_GET['page'] == ''){
+					$page = 2;
+				}else{
+					$page = $_GET['page'] + 1;
+				}
+				$info .= l('下一页', $_GET['q'], array('attributes' =>array('class' => 'last blue'), 'query' => array('page' => $page)));
+				$info .= l('一键阅读全文', $_GET['q'], array('attributes' =>array('class' => 'blue'), 'query' => array('show' => 1)));
+			}
+			$info .= '</div>';
+			$con['page'] = $info;
+		}
+
+		return $con;
+}
+
+function closetags($html) {
+	preg_match_all('#<([a-z]+)(?: .*)?(?<![/|/ ])>#iU', $html, $result);
+	$openedtags = $result[1];
+
+	preg_match_all('#</([a-z]+)>#iU', $html, $result);
+	$closedtags = $result[1];
+	$len_opened = count($openedtags);
+	if (count($closedtags) == count($openedtags)) {
+			return $html;
+	}
+	$openedtags = array_reverse($openedtags);
+
+	for ($i=0; $i < count($openedtags); $i++) {
+			if (!in_array($openedtags[$i], $closedtags)){
+					if($openedtags[$i] != 'br'){
+						$html .= '</'.$openedtags[$i].'>';
+					}
+			} else {
+					//unset($closedtags[array_search($openedtags[$i], $closedtags)]);
+			}
+	}
+	
+	for ($i=0; $i < count($closedtags); $i++) {
+			if (!in_array($closedtags[$i], $openedtags)){
+				if($openedtags[$i] != 'br'){
+					$html = '<'.$closedtags[$i].'>'.$html;
+				}
+			} else {
+					//unset($openedtags[array_search($closedtags[$i], $openedtags)]);
+			}
+	}
+	return $html;
+}
+
+/**
+ *@Operating  顶，踩，收藏
+ */
+function article_voteapi_setting($type = 'article', $value = array()){
+	$array = array('is_login' => 0, 'is_only' => 1);
+	return $array;
+}

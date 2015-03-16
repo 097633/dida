@@ -1,0 +1,241 @@
+<?php
+// $Id$
+
+/**
+ * @file 模块主文件，当模块启用后，系统初始化将载入此文件
+ */
+/**
+ * @Implement of hook_menu()
+ * 定义路径
+ */
+function baidueditor_menu(){
+  $items = array();
+  $items['baidu_editor_image_upload'] = array(
+    'access_arguments' => array('file upload'),
+    'page_callback' => 'baidu_editor_image_upload',
+  );
+	$items['baidu_editor_image_manage'] = array(
+    'access_arguments' => array('file upload'),
+    'page_callback' => 'baidu_editor_image_manage',
+  );
+	$items['baidu_editor_image_remote'] = array(
+    'access_arguments' => array('file upload'),
+    'page_callback' => 'baidu_editor_image_remote',
+  );
+
+  return $items;
+}
+/**
+ * 获取可视化编辑器
+ * @param (string) $dom
+ *  html dom
+ * @param (array) $v
+ *  编辑器配置
+ */
+function dd_get_baidueditor($dom, $v = array()) {
+	if(!$v['lang']){$v['lang'] = 'zh-cn';}
+	if(!$v['autoFloatEnabled']){$v['autoFloatEnabled'] = 'true';}
+	if(!$v['initialContent']){$v['initialContent'] = '';}
+	if(!$v['ext_type']){$v['ext_type'] = '';}
+	foreach($v as $key => $val){
+		$str .= '&'.$key.'='.$val;
+	}
+	$str = 'var URL = "";
+
+    var tmp = window.location.pathname;
+    URL = "/sites/modules/baidueditor/";
+
+    window.UEDITOR_CONFIG = {
+
+        UEDITOR_HOME_URL : URL
+
+        ,lang:"'.$v['lang'].'"
+        ,langPath:URL +"lang/"
+				,autoFloatEnabled : '.$v['autoFloatEnabled'].'
+        //图片上传配置区
+        ,imageUrl:"'.url('baidu_editor_image_upload', array('query' => 'savepath='.$v['savepath'])).'"             //图片上传提交地址
+        ,imagePath: ""                     //图片修正地址，引用了fixedImagePath,如有特殊需求，可自行配置
+				,initialContent:"'.$v['initialContent'].'"    //初始化编辑器的内容,也可以通过textarea/script给值，看官网例子
+				//,autotypeset:{"removeEmptyNode":"1", "mergeEmptyline":"1", "removeClass":"1", "textAlign":"left", "imageBlockLine":"1", "imageBlockLine":"center", "clearFontSize":"1", "clearFontFamily":"1", "pasteFilter":"1", "indent":"1", "removeEmptyline":"1", }
+        //附件上传配置区
+        ,fileUrl:"'.url('baidu_editor_image_upload', array('query' => 'savepath='.$v['savepath'])).'"            //附件上传提交地址
+        ,filePath:""                   //附件修正地址，同imagePath
+        //,fileFieldName:"upfile"                    //附件提交的表单名，若此处修改，需要在后台对应文件修改对应参数
+
+         //远程抓取配置区
+        ,catchRemoteImageEnable:false               //是否开启远程图片抓取,默认开启
+        ,catcherUrl:"'.url('baidu_editor_image_remote', array('query' => 'savepath='.$v['savepath'])).'"   //处理远程图片抓取的地址
+        ,catcherPath:""                  //图片修正地址，同imagePath
+        //,catchFieldName:"upfile"                   //提交到后台远程图片uri合集，若此处修改，需要在后台对应文件修改对应参数
+        //,separater:"ue_separate_ue"               //提交至后台的远程图片地址字符串分隔符
+        //,localDomain:[]                            //本地顶级域名，当开启远程图片抓取时，除此之外的所有其它域名下的图片都将被抓取到本地,默认不抓取127.0.0.1和localhost
+
+        //图片在线管理配置区
+        ,imageManagerUrl:"'.url('baidu_editor_image_manage').'"      //图片在线管理的处理地址
+        ,imageManagerPath:""                                    //图片修正地址，同imagePath
+
+        //工具栏上的所有的功能按钮和下拉框，可以在new编辑器的实例时选择自己需要的从新定义
+				,toolbars:[';
+			if($v['toolbar'] == 'small'){
+				$str .= '["undo", "redo", "|",
+                "bold", "italic", "underline", "strikethrough", "superscript", "subscript", "removeformat", "formatmatch","autotypeset", "|",
+                "blockquote", "|", "pasteplain", "|", "forecolor", "backcolor", "insertorderedlist", "insertunorderedlist","selectall", "cleardoc", "|", "customstyle",
+                "paragraph", "|","rowspacingtop", "rowspacingbottom","lineheight", "|","fontfamily", "fontsize", "|",
+                "directionalityltr", "directionalityrtl", "|", "", "indent", "|",
+                "justifyleft", "justifycenter", "justifyright", "justifyjustify", "|","touppercase","tolowercase","|",
+                "link", "unlink", "anchor", "|", "imagenone", "imageleft", "imageright",
+                "imagecenter", "pagebreak"]
+        ]';
+			}else{
+        $str .= '["fullscreen", "source", "|", "undo", "redo", "|",
+                "bold", "italic", "underline", "strikethrough", "superscript", "subscript", "removeformat", "formatmatch","autotypeset", "|",
+                "blockquote", "|", "pasteplain", "|", "forecolor", "backcolor", "insertorderedlist", "insertunorderedlist","selectall", "cleardoc", "|", "customstyle",
+                "paragraph", "|","rowspacingtop", "rowspacingbottom","lineheight", "|","fontfamily", "fontsize", "|",
+                "directionalityltr", "directionalityrtl", "|", "", "indent", "|",
+                "justifyleft", "justifycenter", "justifyright", "justifyjustify", "|","touppercase","tolowercase","|",
+                "link", "unlink", "anchor", "|", "imagenone", "imageleft", "imageright",
+                "imagecenter", "|", "insertimage", "emotion", "insertvideo", "attachment", "map", "gmap", "insertframe","highlightcode","pagebreak","template","background", "|",
+                "horizontal", "date", "time", "spechars","snapscreen", "wordimage", "|",
+                "inserttable", "deletetable", "insertparagraphbeforetable", "insertrow", "deleterow", "insertcol", "deletecol", "mergecells", "mergeright", "mergedown", "splittocells", "splittorows", "splittocols", "|",
+                "print", "preview", "searchreplace","help"]
+        ]';
+			}
+			$str .= ',labelMap:{
+            "anchor":"", "undo":""
+        }
+    };
+';
+	dd_add_js($str, 'inline');
+	dd_add_js(dd_get_path('module', 'baidueditor') . '/editor_all_min.js', 'module', false);
+	//dd_add_js(dd_get_path('module', 'baidueditor') . '/sisyphus.min.js');
+	$js = 'var ue = new UE.ui.Editor( { } );
+    ue.render( "'.$dom.'" );
+		function getContent() {
+        $(".form_textarea textarea[name=body]").val((ue.getContent()));
+    }
+		/*
+		$(function(){
+			$("#content_form").sisyphus({
+				timeout: 10,
+				onSave: function() {
+					getContent();
+				},
+				onRestore: function() {
+					
+				},
+				onRelease: function() {
+					
+				}
+			});
+		});
+		*/
+		';
+	dd_add_js($js, 'inline');
+	dd_add_css(dd_get_path('module', 'baidueditor') . '/themes/default/ueditor.css');
+}
+
+/**
+ *@Operating 百度编辑器文件上传
+ */
+function baidu_editor_image_upload(){
+	$validate['savepath'] = 'baidueditor';
+	$validate['title'] = $_REQUEST['pictitle'];
+	$validate['filename'] = md5($_FILES['upfile']['name']);
+	$file = file_save_upload($_FILES['upfile'], $validate);
+	echo "{'url':'" . f($file->filepath) . "','title':'" . $file->filename . "','original':'" . $file->filename . "','state':'SUCCESS'}";
+	exit();
+}
+
+/**
+ *@Operating 百度编辑器浏览已上传图片
+ */
+function baidu_editor_image_manage(){                       //问题，怎么分页显示图片
+	global $user;                         
+	
+	$args[] = 'image/%';
+	if($_REQUEST['pic_name'] != ''){
+		$where .= ' AND filename like ?';
+		$args[] = '%'.$_REQUEST['pic_name'].'%';
+	}
+	if(user_access('file all view')){
+		
+	}else{
+		$where .= ' AND uid = ?';
+		$args[] = $user->uid;
+	}
+	$fetch = pager_query("SELECT fid, filepath, filename FROM {files} WHERE filemime LIKE ? AND filepath LIKE '%baidueditor%' ".$where." ORDER BY fid DESC", 18, 0, NULL, $args);
+	$output .= '<input type="text" value="'.$_REQUEST['pic_name'].'" name="pic_name" id="pic_name" /><input id="search" type="button" value="搜索"/>';
+	if ($fetch) {
+		foreach ($fetch as $o) {
+			$thumb = image_get_thumb($o->fid, $o->filepath, '85x85');
+			$item[] = '<span class="files_view_editor_image">'.img($thumb) . '</span><span class="files_view_insert">'.l('删除', url('files/'.$o->fid.'/delete'), array('attributes' => array('class' => 'confirmajax'))).'&nbsp;&nbsp;&nbsp;&nbsp;'.l('小图', f($thumb), array('attributes' => array('title' => $o->filename, 'target' => '_blank', 'link' => f($o->filepath)))).'&nbsp;&nbsp;&nbsp;&nbsp;'.l('大图', f($o->filepath), array('attributes' => array('title' => $o->filename, 'target' => '_blank'))).'</span><div style="height:20px;overflow:hidden;">'.$o->filename.'</div>';
+		}
+		$output .= theme('item_list', $item, NULL, 'ul', array('id' => 'files_view_editor_baidu'));
+    $output .= pager_view();
+		$output .= '
+		<style>
+			.files_view_editor_image {
+				text-align:center;
+			}
+			#files_view_editor_baidu{
+				height:100%;
+				overflow:hidden;
+			}
+			#files_view_editor_baidu li{
+				width:110px;
+				float:left;
+				margin-left:10px;
+			}
+		</style>
+		<script>
+		$(function(){
+			$(".files_view_insert a").click(function(){
+				if($(this).attr("title") != "删除"){
+					window.returnValue=$(this).attr("href");
+					window.close();
+					return false;
+				}
+			});
+			$(".pager a").click(function(){
+				$.get($(this).attr("href"), function(data) {
+					$("#print").html(data);
+				});
+				return false;
+			});
+			$("#search").click(function(){
+				$.get("/?q=baidu_editor_image_manage&pic_name="+$("#pic_name").val(), function(data) {
+					$("#print").html(data);
+				});
+				return false;
+			});
+		});
+		</script>';
+		if($_REQUEST['page'] != ''){
+			echo $output;
+		}else{
+			echo theme('print', $output);
+		}
+    exit;
+	}
+
+	echo $str;exit();
+}
+/**
+ *@Operating  保存远程图片到本地
+ */
+function baidu_editor_image_remote(){
+	global $user, $__file_down_image;
+
+	$arr[3] = $_POST['upfile'];
+	if(strpos('%%'.$_POST['upfile'], 'http') != ''){
+		if($_GET['savepath'] != ''){
+			$__file_down_image['validate']['savepath'] = $_GET['savepath'];
+		}
+		$result = _file_down_image($arr);               
+		$result = str_replace('"', '', $result);
+	}else{
+		$result = $_POST['upfile'];
+	}
+	echo "{'url':'" . $result.'ue_separate_ue' . "','tip':'远程图片抓取成功！','srcUrl':'" . $arr[3] . "'}";
+	exit();
+}

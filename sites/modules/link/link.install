@@ -1,0 +1,80 @@
+<?php
+// $Id$
+
+/**
+ * @Implement of hook_schema()
+ *  定义模块安装时需要创建的数据表
+ */
+function link_schema() {
+  $schema['link'] = array(
+    'description' => '',
+    'fields' => array(
+      'nid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => '主键，自增型'
+      ),
+      'title' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '网站名称',
+      ),
+      'url' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '网址',
+      ),
+      'weight' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '排序',
+      ),
+      'created' => array(
+        'type' => 'varchar',
+				'length' => 12,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '创建时间',
+      ),
+    ),
+    'primary key' => array('id'), // 主键
+  );
+  return $schema;
+}
+
+/**
+ * @Implement of hook_install()
+ *  模块安装时执行的操作
+ */
+function link_install() {
+  $ret = array();
+  $ret = module_install_schema('install', 'link'); // 安装数据表
+  /**
+   * 在这儿可以执行其它操作，包括数据库增删查。
+   */
+  return $ret;
+}
+
+/**
+ * @Implement of hook_uninstall()
+ *  模块卸载时执行的操作
+ */
+function link_uninstall() {
+  $ret = array();
+  $ret = module_install_schema('uninstall', 'link'); // 删除创建的数据表
+  
+  // 其它操作，必须删除由模块创建的友情链接、图片等
+  
+  // 删除模块写入的配置信息，如果没有可以不要
+  db_exec('DELETE FROM {variable} WHERE name LIKE ?', array('link_%')); 
+  var_init(); // 刷新站点配置文件
+  
+  return $ret;
+}

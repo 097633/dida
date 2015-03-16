@@ -1,0 +1,8 @@
+<?php
+// $Id$
+$info = array(
+  'name' => 'message',
+  'description' => '站内信模块',
+  'ver' => '1.0',
+  'language' => 'zh-hans',
+);

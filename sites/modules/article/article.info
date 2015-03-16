@@ -1,0 +1,9 @@
+<?php
+// $Id$
+$info = array(
+  'name' => 'article',
+  'description' => '文章模块，创建一个文章类型',
+  'ver' => '1.0',
+  'language' => 'zh-hans',
+	'weight' => '-1',
+);

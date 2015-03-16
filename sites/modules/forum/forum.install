@@ -1,0 +1,307 @@
+<?php
+// $Id$
+
+/**
+ * @Implement of hook_schema()
+ */
+function forum_schema() {
+  $schema['forum_term'] = array(
+    'description' => '论坛版块',
+    'fields' => array(
+      'tid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '版块名称',
+      ),
+      'new' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'tiny',
+        'serialize' => true,
+        'description' => '最新主题相关数据'
+      ),
+      'data' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'medium',
+        'serialize' => true,
+        'description' => '详细数据'
+      ),
+      'type' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+        'size' => 'tiny',
+        'description' => '类型：-1：外部链接，0：私密版块，1、正常版块',
+      ),
+      'node_count' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '主题数，仅包含 status > 0 的主题',
+      ),
+      'comment_count' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '回复数',
+      ),
+      'weight' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '排序',
+      ),
+      'pid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '分区 id，0 则为分区',
+      ),
+    ),
+    'unique keys' => array(
+      'np' => array('name', 'pid'),
+    ),
+    'indexes' => array(
+      'weight' => array('weight'),
+      'wp' => array('weight', 'pid'),
+    ),
+    'primary key' => array('tid'),
+  );
+  $schema['forum'] = array(
+    'description' => '论坛主题',
+    'fields' => array(
+      'fid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'title' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '标题',
+      ),
+      'body' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+        'description' => '内容'
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '作者 id',
+      ),
+      'tid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '版块 id',
+      ),
+      'comment_count' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '回复数量',
+      ),
+      'last_name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '最后回复用户名称+评论id，格式：234|east',
+      ),
+      'created' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '发表时间',
+      ),
+      'updated' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '更新时间',
+      ),
+      'top' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'tiny',
+        'description' => '置顶，1：版块置顶，2、分区置顶，3、总置顶',
+      ),
+      'essence' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'tiny',
+        'description' => '精华，1、精华',
+      ),
+      'format' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '输入格式',
+      ),
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+        'size' => 'tiny',
+        'description' => '状态：-1：回收站，0：未发布，1、已发布，2、禁止回复',
+      ),
+    ),
+    'foreign keys' => array(
+      'tid' => array(
+        'table' => 'forum_term',
+        'field' => 'tid',
+        'update' => 'cascade',
+        'delete' => 'cascade'
+      )
+    ),
+    'indexes' => array(
+      'su' => array('status', 'updated'),
+      'stu' => array('status', 'tid', 'updated'),
+      'suu' => array('status', 'uid', 'updated'),
+    ),
+    'primary key' => array('fid'),
+  );
+  $schema['forum_admin'] = array(
+    'description' => '版块版主',
+    'fields' => array(
+      'type' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'tiny',
+        'description' => '类型：0：普通版主，1、首席版主',
+      ),
+      'tid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '版块 id',
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '用户 id',
+      ),
+      'weight' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '排序',
+      ),
+    ),
+    'unique keys' => array(
+      'ut' => array('uid', 'tid'),
+    ),
+    'foreign keys' => array(
+      'tid' => array(
+        'table' => 'forum_term',
+        'field' => 'tid',
+        'update' => 'cascade',
+        'delete' => 'cascade'
+      )
+    ),
+  );
+  $schema['forum_term_access'] = array(
+    'description' => '版块权限，私密版块',
+    'fields' => array(
+      'type' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'tiny',
+        'description' => '类型：0：浏览权限，1、发布权限',
+      ),
+      'tid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '版块 id',
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '用户 id',
+      ),
+    ),
+    'unique keys' => array(
+      'utt' => array('uid', 'tid', 'type'),
+    ),
+    'foreign keys' => array(
+      'tid' => array(
+        'table' => 'forum_term',
+        'field' => 'tid',
+        'update' => 'cascade',
+        'delete' => 'cascade'
+      )
+    ),
+  );
+  return $schema;
+}
+
+/**
+ * @Implement of hook_install()
+ */
+function forum_install() {
+  $ret = array();
+  $ret = module_install_schema('install', 'forum');
+  
+  $data = new stdClass;
+  $data->name = t('forum', '默认分区');
+  $data->type = 1;
+  $data->data['description'] = t('forum', '模块自动生成的默认分区，你可以修改或删除它');
+  $data->pid = 0;
+  
+  if (forum_term_save($data, false)) {
+    $sub = new stdClass;
+    $sub->name = t('forum', '默认版块');
+    $sub->type = 1;
+    $sub->data['description'] = t('forum', '模块自动生成的版块，你可以修改或删除它');
+    $sub->pid = $data->tid;
+    forum_term_save($sub, false);
+  }
+  
+  return $ret;
+}
+
+/**
+ * @Implement of hook_uninstall()
+ */
+function forum_uninstall() {
+  $ret = array();
+  $ret = module_install_schema('uninstall', 'forum');
+  
+  db_exec('DELETE FROM {variable} WHERE name LIKE ?', array('forum_%'));
+  var_init();
+  
+  return $ret;
+}

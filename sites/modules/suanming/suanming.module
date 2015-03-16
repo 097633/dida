@@ -1,0 +1,559 @@
+<?php
+// $Id$
+
+/**
+ * @file 模块主文件，当模块启用后，系统初始化将载入此文件
+ */
+
+/**
+ * @Implement of hook_menu()
+ * 定义路径
+ */
+function suanming_menu(){
+  $items = array();
+  $items['suanming/%'] = array(
+    'load_functions' => array(1 => array('suanming_load')),
+    'access_callback' => TRUE, // 浏览权限
+    'page_callback' => 'suanming_page',
+    'page_arguments' => array(1),
+    //'file' => 'suanming.page.inc',
+  );
+	$items['suanming'] = array(
+	  'title' => '算命',
+	  'access_callback' => TRUE, // 浏览权限
+	  'page_callback' => 'suanming_front',
+	  'page_arguments' => array(''),
+	); 
+	$items['admin/smnr/add'] = array(
+    'title' => '发表算命内容',
+    'access_arguments' => array('smnr add'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('smnr_node_form'),
+    'file' => 'smnr.form.inc',
+  );
+	$items['admin/smnr/%/edit'] = array(
+    'title' => '编辑算命内容',
+  	'load_functions' => array(2 => array('smnr_load')),
+    'access_arguments' => array('smnr add'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('smnr_node_form', 2),
+    'file' => 'smnr.form.inc',
+  );
+	$items['smnr/%/delete'] = array(
+    'title' => '删除算命内容',
+		'load_functions' => array(1 => array('smnr_load')),
+    'access_arguments' => array('smnr edit'),
+    'page_callback' => 'smnr_delete', // 回调表单
+    'page_arguments' => array(1),
+  );
+  $items['admin/suanming'] = array(
+    'title' => '管理算命',
+    'access_arguments' => array('suanming admin'),
+    'page_callback' => 'suanming_admin_page',
+    'file' => 'suanming.admin.inc',
+  );
+	$items['admin/smnr'] = array(
+    'title' => '管理算命内容',
+    'access_arguments' => array('smnr admin'),
+    'page_callback' => 'smnr_admin_page',
+    'file' => 'smnr.admin.inc',
+  );
+
+  return $items;
+}
+
+function suanming_front(){
+	if ($_GET['act'] == 'result') {
+		if ($_GET['fenlei'] == 'jiating') {
+			sleep(1);
+			$data = get_suanming_nid(1, '家庭');
+			$con = '家庭:' . $data->title . '<a href="/suanming/' .$data->smid. '" target="_blank">详情</a>';
+		}
+		if ($_GET['fenlei'] == 'shiye') {
+			sleep(1);
+			$data = get_suanming_nid(1, '事业');
+			$con = '事业:' . $data->title . '<a href="/suanming/' .$data->smid. '" target="_blank">详情</a>';
+		}
+		if ($_GET['fenlei'] == 'aiqing') {
+			sleep(1);
+			$data = get_suanming_nid(1, '爱情');
+			$con = '爱情:' . $data->title . '<a href="/suanming/' .$data->smid. '" target="_blank">详情</a>';
+		}
+		if ($_GET['fenlei'] == 'yunshi') {
+			$data = get_suanming_nid(2, '运势');
+			$con = '爱情:' . $data->title . '<a href="/suanming/' .$data->smid. '" target="_blank">详情</a>';
+		}
+		if ($_GET['fenlei'] == 'cezi') {
+			$data = get_suanming_nid(3, $_GET['czfenlei']);
+			$con = '爱情:' . $data->title . '<a href="/suanming/' .$data->smid. '" target="_blank">详情</a>';
+		}
+	}
+
+	echo $con;
+	exit();
+}
+
+function get_suanming_nid($type, $fenlei) {
+	$count = db_query('SELECT n.nid,n.sid FROM {suanming} n LEFT JOIN {suanming_neirong} sn ON n.sid = sn.nid WHERE n.uid = ? AND n.type = ? AND sn.fenlei = ?', array($GLOBALS['user']->uid, $type, $fenlei), array('return' => 'one'));
+	if (!$count->nid) {
+		$data = db_query('SELECT nid,title FROM {suanming_neirong} WHERE fenlei = ? ORDER BY RAND()', array($fenlei), array('return' => 'one'));
+		$suanming['sid'] = $data->nid;
+		$suanming['type'] = $type;
+		$nid = suanming_save($suanming);
+		$data->smid = $nid;
+	} else {
+		$data = smnr_load($count->sid);
+		$data->smid = $count->nid;
+	}
+
+	return $data;
+}
+
+function suanming_page($suanming){
+	dd_set_title(array($suanming->name . '算命结果'));
+
+	return theme('suanming', $suanming);
+}
+
+function suanming_search_page($content){
+	$output = '算命搜索结果';
+  if($fetch = pager_query('SELECT n.nid FROM {suanming} n WHERE n.title LIKE ? ORDER BY n.nid DESC', 10, 0, NULL, array('%'.$_REQUEST['title'].'%'))){
+	  foreach($fetch as $o){
+			$o = suanming_load($o->nid);
+			$items[] = '<span class="n_time">('. format_date($o->timestamp).')</span><span class="l_title">'.l($o->title, $o->url) .'</span>';
+		}
+		$output .= theme('item_list', $items, NULL, 'ul', array('id' => 'suanming_search_list'));
+    $output .= pager_view();
+  }else{
+    $output .= system_no_content();
+  }
+	$content->content = $output;
+
+  return $content;
+}
+
+function suanming_sitemap_front($content){
+	$output = '算命网站地图';
+  if($fetch = pager_query('SELECT n.nid FROM {suanming} n', 10, 0, NULL, array())){
+	  foreach($fetch as $o){
+			$o = suanming_load($o->nid);
+			$items[] = '<span class="n_time">('. format_date($o->timestamp).')</span><span class="l_title">'.l($o->title, $o->url) .'</span>';
+		}
+		$output .= theme('item_list', $items, NULL, 'ul', array('id' => 'suanming_search_list'));
+    $output .= pager_view();
+  }else{
+    $output .= system_no_content();
+  }
+	$content->content = $output;
+
+  return $content;
+}
+/**
+ * @Implement of hook_site_menu()
+
+function suanming_site_menu(&$menu) {
+	$menu['suanming']['#data'] = l('推荐算命', 'suanming');
+	$menu['suanming']['#weight'] = -10;
+	//$menu['suanming']['#childrens'] = suanming_sub_menu();
+}
+*/ 
+/*
+获取栏目子栏目当下拉菜单
+*/
+function suanming_sub_menu($tid = NULL){
+	$subterms = get_term_byvname('lanmu', 'suanming', 100);
+	foreach($subterms as $m){
+		$link[] = l($m->name, 'category/'.$m->tid);
+	}
+
+	return $link;
+}
+
+/**
+ * @Implement of hook_prem()
+ *  向系统注册权限
+ */
+function suanming_perm(){
+  /**
+   * if(user_access('suanming add')){ // 这样来判断当前用户是否有该权限 }
+   * 多语言字符串 t() 函数，多了一个参数：t('模块名称', '字符串')
+   * 这是为了同一个词语在不同模块中可以有不同翻译
+   */
+  return array(
+    'suanming add' => t('suanming', '发表管理自己算命'),
+		'suanming admin' => t('suanming', '管理所有算命'),
+		'smnr add' => t('suanming', '发表管理自己算命内容'),
+    'smnr admin' => t('suanming', '管理所有算命内容'),
+    'admin suanming fields' => t('suanming', '管理字段')
+  );
+}
+
+function suanming_is_edit($suanming = ''){
+  if($_GET['xcid'] != ''){
+		$suanming = suanming_load($_GET['xcid']);
+  }	
+  $account = user_load($suanming->uid);
+  if(arg(2) == 'delete' && user_access('suanming edit',$account)){
+	return TRUE;
+  }
+  if(arg(2) == 'add' && user_access('suanming edit',$account)){
+    return TRUE;
+  }
+	if(arg(1) == 'add' && user_access('suanming edit',$account)){
+		return TRUE;
+	}
+	if(arg(2) == 'edit'){
+			if($account->uid == $GLOBALS['user']->uid){
+				return TRUE;
+			}	
+	}
+}
+
+/**
+ * @Implement of hook_system_admin_menus()
+ * 向系统注册管理菜单
+ */
+function suanming_system_admin_menus(){
+  return array(array(
+    array(t('suanming', '发表算命内容'), 'admin/smnr/add'),	
+    array(t('suanming', '算命管理内容'), 'admin/smnr'),
+		array(t('suanming', '算命结果管理'), 'admin/suanming'),
+  ), t('suanming', '算命模块'));
+}
+
+/**
+ * @Implement of hook_theme()
+ * 定义 theme
+*/ 
+function suanming_theme(){
+  return array(
+    'suanming' => array(
+      'tpl' => 'node.tpl.php', // 加载的 tpl.php，必须放在模块的 tpl 文件夹内。如复制一份到主题文件夹，优先级比模块文件夹中高
+      'args' => array('suanming'), // 传递到 tpl.php 中的变量
+    ),
+		'smnr' => array(
+			'tpl' => 'smnr.tpl.php', // 加载的 tpl.php，必须放在模块的 tpl 文件夹内。如复制一份到主题文件夹，优先级比模块文件夹中高
+      'args' => array('suanming'), // 传递到 tpl.php 中的变量
+		),
+  );
+}
+
+/**
+ * @Implement of hook_field_call_group()
+ * 注册一个 field 组，一个模块可以注册多个 field 组
+ */
+function suanming_field_call_group($type = NULL){
+  $groups = array(
+    'my_field' => array(
+      'title' => t('suanming', '算命字段'),
+      'sum' => 0,
+      'level' => 0,
+    ),
+		'smnr' => array(
+      'title' => t('smnr', '算命内容字段'),
+      'sum' => 0,
+      'level' => 0,
+    )
+  );
+  return $type ? $groups[$type] : $groups;
+}
+
+/**
+ * 载入算命
+ */
+function suanming_load($nid){
+  /**
+   * 数据库连接使用 PDO，类似于 drupal 7
+   */
+	if($suanming = db_query('SELECT n.*, sn.*, u.uid, u.name FROM {suanming} n INNER JOIN {users} u ON n.uid = u.uid LEFT JOIN {suanming_neirong} sn ON n.sid = sn.nid WHERE n.nid = ?', array($nid), array('return' => 'one'))){
+		//field_get_node_load('suanming', 'my_field', $suanming);             // 加载这篇 算命下的自定义字段
+		$suanming->time = date('Y-m-d H:i:s', $suanming->created);
+		if(!$suanming->description){
+			$suanming->description = mb_substr(strip_tags($suanming->body),0,200);
+		}
+		$suanming->keywords .= $suanming->title;
+		if($suanming->fields['tags']){
+			foreach ($suanming->fields['tags'] as $tag){
+				$suanming->tags .= '<a href="'.url('category/'.$tag->tid).'" title="'.$tag->name.'">'.$tag->name.'</a> '; 
+				$suanming->keywords .= ','.$tag->name;
+			}
+		}
+		$suanming->url = url('suanming/'.$nid);
+	}
+
+	return $suanming;
+}
+
+/**
+ * 载入算命内容
+ */
+function smnr_load($nid){
+  /**
+   * 数据库连接使用 PDO，类似于 drupal 7
+   */
+	if($smnr = db_query('SELECT n.*,u.name FROM {suanming_neirong} n INNER JOIN {users} u ON n.uid = u.uid WHERE n.nid = ?', array($nid), array('return' => 'one'))){
+		//field_get_node_load('suanming', 'smnr', $smnr);             // 加载这篇 算命下的自定义字段
+	}
+
+	return $smnr;
+}
+
+/**
+ * 保存算命
+ */
+ function suanming_save($v){
+  // 插入、更新 用db_exec()
+  global $user;
+  if(!$v['uid']){$v['uid'] = $user->uid;}
+	$v['created'] = time();
+	
+	if($v['nid']){ // 更新
+		$args = array('nid');
+    if(db_write_record('suanming', $v, $args)){
+			$value = (object) $v;
+		}
+  }else{
+		if(db_write_record('suanming', $v)){
+			$value = (object) $v;
+			if($value->nid = db_last_insert_id()){	
+			}
+		}
+	}
+
+  return $value->nid;
+}
+
+/**
+ * 保存算命内容
+ */
+ function smnr_save($v){
+  // 插入、更新 用db_exec()
+  global $user;
+  if(!$v['uid']){$v['uid'] = $user->uid;}
+	$v['created'] = time();
+
+	if($v['nid']){ // 更新
+		$args = array('nid');
+    if(db_write_record('suanming_neirong', $v, $args)){
+			$value = (object) $v;
+		}
+  }else{
+		if(db_write_record('suanming_neirong', $v)){
+			$value = (object) $v;
+		}
+	}
+
+  //dd_goto(dd_get_cookie('redirect'));
+}
+
+function suanming_delete($suanming){                                                  //删除算命
+  if(db_exec('DELETE FROM {suanming} WHERE nid = ?', array($suanming->nid))){
+    field_get_node_delete('suanming','my_field',$suanming);             //删除算命自定义字段
+		dd_goto(dd_get_history());
+  }
+}
+
+function smnr_delete($smnr){                                                  //删除算命
+  if(db_exec('DELETE FROM {suanming_neirong} WHERE nid = ?', array($smnr->nid))){
+    field_get_node_delete('suanming','smnr',$smnr);             //删除算命自定义字段
+		if($_GET['ajax'] == 1){
+			exit();
+		}else{
+			dd_goto(dd_get_history());
+		}
+  }
+}
+
+function suanming_list($tid = NULL, $start = 0, $limit = 10, $order = 0, $titlelen = '20', $bodylen = '120', $flag = '', $alltid = 0, $term = 0){ 
+  //获取指定分类分类信息列表,没有$tid时按顺序取最后的几个节点
+	$args = array();
+	$where = ' n.nid>0';
+  if($tid){
+		if($alltid == 1){
+			$tids = get_allterm_bytid($tid);
+		}else{
+			$tids = array($tid);
+		}
+    //$args[] = $tids;
+    $where .= " and ftn.tid in (".implode(',',$tids).")";
+  }   
+	if($order == 0){
+		$order = 'ORDER BY n.nid DESC';
+	}else{
+		$order = 'ORDER BY n.nid ASC';
+	}
+  if($flag){
+    $where .= ' and n.flag = ?';
+    $args[] = $flag;        
+  }
+	if($term == 1){
+		$re = ',ft.name,ft.tid';
+		$join .= ' INNER JOIN {fields_term} ft ON ftn.tid = ft.tid';
+		$where .= ' and ftn.tid>0';
+	}
+	
+	$re .= ',f.filepath';
+	$join .= ' LEFT JOIN {files} f ON n.fid = f.fid';
+
+	if(!$tid && !$term){
+		$fetch = db_query('SELECT DISTINCT n.*'.$re.' FROM {suanming} n '.$join.' WHERE '.$where.' '.$order, $args, array('limit' => array($start,$limit)));
+	}else{
+		$fetch = db_query('SELECT DISTINCT n.*'.$re.' FROM {suanming} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid '.$join.' WHERE '.$where.' '.$order, $args, array('limit' => array($start,$limit)));
+	}
+	foreach($fetch as $key=>$suanming){
+    if(!$suanming->description && $suanming->body){
+      $suanming->description = mb_substr(strip_tags($suanming->body),0,$bodylen,'utf-8');
+    }
+		
+		$suanming->url = url('suanming/'.$suanming->nid);
+		$suanming->time = date('Y-m-d', $suanming->timestamp);
+	}
+	
+	return $fetch;
+}
+
+function smnr_list($xcid){ 
+  //获取指定分类分类信息列表,没有$tid时按顺序取最后的几个节点
+	$args = array();
+	$where = ' n.nid>0';
+
+	$args[] = $xcid;
+	$where .= ' and n.xid = ?';
+
+	$fetch = db_query('SELECT n.* FROM {suanming_neirong} n  WHERE '.$where.' ORDER BY n.day ASC', $args);
+	foreach($fetch as $smnr){
+		field_get_node_load('suanming', 'smnr', $smnr);
+	}
+
+	return $fetch;
+}
+
+function suanming_category_list($tid = NULL, $num = 10){                  //指定分类列表分页
+	$re .= ',f.filepath';
+	$join .= ' LEFT JOIN {files} f ON n.fid = f.fid';
+
+	if(!$tid){
+		$fetch = pager_query('SELECT n.*'.$re.' FROM {suanming} n '.$join.' WHERE n.nid>0 ORDER BY n.nid DESC', $num, 0, NULL, array());
+	}else{
+		$fetch = pager_query('SELECT *'.$re.' FROM {suanming} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid '.$join.' WHERE n.nid>0 and ftn.tid>0 and ftn.tid = ? ORDER BY n.nid DESC', $num, 0, NULL, array($tid));
+	}
+	if($fetch){
+		foreach($fetch as $suanming){
+			field_get_node_load('suanming', 'my_field', $suanming);
+			$suanming->url = url('suanming/'.$suanming->nid);
+		}
+	}
+	return $fetch;
+}
+
+/**
+ * @Implement of hook_field_term_view()
+ * 默认栏目显示
+
+function suanming_field_term_view($term, $num = 15){
+	$tmp = explode('.', $_SERVER['HTTP_HOST']);
+	if(count($tmp) == 3 && $tmp[0] != 'www'){
+		dd_get_not();
+	}
+	if($_REQUEST['page'] != ''){
+		dd_set_title(array($term->name.' - 第'.$_REQUEST['page'].'页', $term->field->name));
+	}
+
+	if($term->weight != 0){
+		$nid = db_query("SELECT n.nid FROM {suanming} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid WHERE n.nid > 0 AND ftn.tid = ? ORDER BY n.nid ASC LIMIT 0,1", array($term->tid), array('return' => 'column'));
+		if($nid){
+			$suanming = suanming_load($nid);
+			return suanming_page($suanming);
+		}else{
+			return '暂无数据';
+		}
+	}
+
+	$where = ' n.nid > 0';
+	$tids = get_allterm_bytid($term->tid);
+	$where .= " and ftn.tid in (".implode(',',$tids).")";
+
+  if($fetch = pager_query('SELECT n.nid FROM {suanming} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid WHERE '.$where.' ORDER BY n.nid DESC', $num, 0, NULL, array($term->tid))){
+    
+    if($GLOBALS['conf']['suanming_rss_node']){
+      dd_set_html_head('<link rel="alternate" type="application/rss+xml" title="'.t('suanming', '订阅最新新闻').'" href="'.url('category/'.$term->tid.'/feed').'" />');
+    }
+    
+    foreach($fetch as $o){
+			$val = suanming_load($o->nid);
+
+			if($val->filepath != ''){
+				$img = '<img src="/'.get_litpic($val, '300x250').'" title="'.$val->title.'"/>';
+			}else{
+				$img = '<img src="'.$val->fields['litpic']->text.'" title="'.$val->title.'"/>';
+			}
+      $items[] = '<a href="'.$val->url.'">'.$img.'</a><h3><a href="'.$val->url.'">'.$val->title.'</a></h3>';
+    }
+    $output = theme('item_list', $items, NULL, 'ul', array('id' => 'suanming_term_list'));
+    $output .= pager_view();
+  }else{
+    $output = system_no_content();
+  }
+  return $output;
+}
+ */
+/**
+ * @Implement of hook_call_custom()
+ */
+function suanming_call_custom($v){
+  global $conf, $base_url;
+  switch($v['op']){
+    case 'feed':
+      require dd_get_path('module', 'suanming') . '/suanming.feed.inc';
+      
+      if($_GET['type'] == 'node'){
+        dd_set_header('Content-Type: application/xml; charset=utf-8');
+          /**
+           * 默认：获取全站最新算命
+           * $_GET['uid']：用户 id，获取该用户最新算命
+           */
+          echo suanming_get_feed_node($uid = NULL,$tid = $_GET['tid']);
+      }else{
+        echo 'byebye';
+      }
+    break;
+  }
+  exit;
+}
+
+/**
+* hook_cron
+*/
+function suanming_cron(){
+  
+}
+/**
+ * 发送 ping
+ */
+function suanming_set_ping($nid){
+  global $conf, $base_url;
+  
+	$suanming = suanming_load($nid);
+  $data['params'] = array(
+    $conf['site_global']['name'], // 网站名称
+    $base_url, // 网站首页
+    url($suanming->url, array('absolute' => false)), // 算命地址
+    url('http://'.$conf['site_url'].'/custom.php?module=suanming&op=feed&type=node', array('absolute' => true)) // rss 地址
+  );
+  
+  return dd_set_ping($data);
+}
+
+
+function suanming_init(){
+	dd_add_js(dd_get_path('module', 'suanming').'/suanming.js');
+	dd_jqui();
+}
+
+function suanming_user_insert($account){
+	$v['title'] = $account->name.'的算命';
+	$v['body'] = '';
+	$v['uid'] = $account->uid;
+	$v['stime'] = date('Y-m-d', strtotime('+7 days'));;
+	suanming_save($v);
+}

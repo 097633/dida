@@ -1,0 +1,8 @@
+<?php
+// $Id$
+$info = array(
+  'name' => 'link',
+  'description' => '合作伙伴模块',
+  'ver' => '1.0',
+  'language' => 'zh-hans',
+);

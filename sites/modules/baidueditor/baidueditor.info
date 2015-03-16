@@ -1,0 +1,8 @@
+<?php
+// $Id: article.info 1 2012-10-14 09:02:51Z east $
+$info = array(
+  'name' => '百度编辑器',
+  'ver' => '1.0',
+  'language' => 'zh-hans',
+);
+ 

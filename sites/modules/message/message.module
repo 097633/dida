@@ -1,0 +1,237 @@
+<?php
+// $Id$
+
+/**
+ * @file 模块主文件，当模块启用后，系统初始化将载入此文件
+ */
+
+/**
+ * @Implement of hook_menu()
+ * 定义路径
+ */
+function message_menu(){
+  $items = array();
+  $items['message/users'] = array(
+    'title' => '会员列表',
+		'access_callback' => true,
+    'page_callback' => 'message_users', // 回调表单
+    'page_arguments' => array(''),
+  );
+  $items['message/add'] = array(
+    'title' => '发表站内信',
+    'access_arguments' => array('message add'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('message_node_form'),
+  );
+  $items['admin/message/%/edit'] = array(
+    'title' => '编辑站内信',
+  	'load_functions' => array(2 => array('message_load')),
+    'access_arguments' => array('admin message list'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('message_node_form', 2)
+  );
+  $items['admin/message/%/replay'] = array(
+    'title' => '回复站内信',
+    'access_arguments' => array('admin message list'),
+    'page_callback' => 'message_replay', // 回调表单
+    'page_arguments' => array(''),
+  );
+  $items['message/%/delete'] = array(
+    'title' => '删除站内信',
+    'access_arguments' => array('admin message list'),
+    'page_callback' => 'message_delete', // 回调表单
+    'page_arguments' => array(1),
+  );
+  $items['admin/message'] = array(
+    'title' => '管理站内信',
+    'access_arguments' => array('admin message list'),
+    'page_callback' => 'message_admin_page',
+  );
+
+  return $items;
+}
+
+/**
+ *站内信选择用户
+ */
+function message_users(){
+	if ($fetch = db_query('SELECT uid,name FROM {users} WHERE name like ?	ORDER BY uid DESC', array('%'.$_REQUEST['value'].'%'))) {
+		foreach ($fetch as $o) {
+			$json['contents'][] = $o->name;
+		}
+		$json['error'] = 0;
+	}else{
+		$json = '';
+	}
+	echo json_encode($json);
+	exit();
+}
+
+/**
+ *@Operating  设置站内信状态
+ */
+function set_message_status($status = 1, $uid = ''){
+	db_query("UPDATE {message} SET status = ? WHERE touid = ?", array($status, $uid));
+}
+
+/**
+ *@Operating  用户有多少未读站内信
+ */
+function message_count($uid){ 
+	$fetch = db_query('SELECT count(a.id) FROM {message} a WHERE touid = ? AND status = 0', array($uid), array('return' => 'column'));
+	if($fetch != 0){
+		if(!$_SESSION['messages']['notice']){
+			//dd_set_message(l('您有'.$fetch.'条未读站内信', 'user/'.$uid.'/message'));
+		}
+	}
+
+	return $fetch;
+}
+/**
+ *@Operating   hook_user_login
+ */
+function message_user_login($user){
+	$unmsg = message_count($user->uid);
+	if($unmsg != 0){
+		dd_set_message(t('oauth', '登录成功'.l('您有'.$unmsg.'条未读站内信', 'user/'.$user->uid.'/message')));
+	}else{
+		dd_set_message(t('oauth', '登录成功'));
+	}
+}
+/**
+ *@Operating  hook_user_insert
+
+function message_user_insert($value){
+	$msg = new stdClass();
+	$msg->uid = 3;
+	$msg->touid = $value->uid;
+	$msg->body = '感谢您的注册';
+	$msg->type = 5;
+	message_save($msg);
+}
+ */
+/**
+ * @Implement of hook_prem()
+ *  向系统注册权限
+ */
+function message_perm(){
+  /**
+   * if(user_access('message add')){ // 这样来判断当前用户是否有该权限 }
+   * 多语言字符串 t() 函数，多了一个参数：t('模块名称', '字符串')
+   * 这是为了同一个词语在不同模块中可以有不同翻译
+   */
+  return array(
+    'message add' => t('message', '发表站内信'),
+    'admin message list' => t('message', '管理站内信'),
+  );
+}
+
+/**
+ * 站内信详细内容
+ */
+function message_load($id){
+	$fetch = db_query('SELECT n.* FROM {message} n WHERE n.id = ?', array($id), array('return' => 'one'));
+
+	return $fetch;
+}
+
+function message_delete($id){                                                  //删除站内信
+  if(db_exec('DELETE FROM {message} WHERE id = ?', array($id))){
+		
+		dd_goto(dd_get_history());
+  }
+}
+
+/**
+ *站内信表单
+ **/
+function message_node_form($touser = NULL){
+  $form['settings'] = array(
+    //'#redirect' => url('message'), // 提交成功后跳转地址
+		'#validate' => array('message_node_form_validate'),
+    '#ajax_validate' => 1,
+  );
+  $form['fields']['id'] = array(
+    '#type' => 'hidden',
+    '#default_value' => $message->id,
+    '#constant' => 1
+  );  
+  $form['fields']['title'] = array(
+    '#title' => t('message', '发送给'),
+    '#type' => 'textfield',
+    '#default_value' => $touser->name,
+    '#required' => 1,
+    '#weight' => -10,
+    '#attributes' => array('size' => 20),
+		'#autocomplete' => array(
+      'url' => url('message/users'),
+    )
+  );
+  $form['fields']['body'] = array(
+    '#title' => t('body', '内容'),
+    '#type' => 'textarea',
+    '#default_value' => $message->body,
+    '#weight' => 0,
+    '#required' => 1,
+    '#attributes' => array('size' => 20)
+  );  
+  $form['fields']['submit'] = array(
+    '#type' => 'submit',
+    '#submit' => 'message_node_form_submit', // 提交时回调函数
+    '#weight' => 100
+  );
+  
+  return $form;
+}
+
+function message_node_form_validate($form, $v){
+	$v['_dida_values']->uid = $GLOBALS['user']->uid;
+	if($GLOBALS['user']->uid == 0){
+		$e['title']['#error'][] = '请您登陆后私信该用户';
+	}
+	if($v['title'] == ''){
+		$e['title']['#error'][] = '该用户不存在';
+	}
+	$v['_dida_values']->touid = db_query("SELECT uid FROM {users} WHERE name = ?", array($v['title']), array('return' => 'column'));
+	if($v['_dida_values']->touid == ''){
+		$e['title']['#error'][] = '该用户不存在';
+	}
+	if($v['_dida_values']->uid == $v['_dida_values']->touid){
+		$e['title']['#error'][] = '不能给自己发信';
+	}
+	if($e != ''){
+		return $e;
+	}else{
+		return false;
+	}
+}
+
+// 表单提交回调函数
+function message_node_form_submit($form, $v){
+  // 插入、更新 用db_exec()
+	message_save($v['_dida_values']);
+}
+
+/**
+ * 保存站内信
+ */
+ function message_save($v){
+  // 插入、更新 用db_exec()
+	$v->created = time();
+	if($v->id){ // 更新
+		$args = array('id');
+    if(db_write_record('message', $v, $args)){
+
+		}
+  }else{
+		if(db_write_record('message', $v)){
+
+		}
+		// 创建成功
+		// 保存字段数据，也必须是对象
+	}
+	
+	dd_set_message('发送成功');
+
+  return $value;  
+}

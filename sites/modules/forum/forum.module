@@ -1,0 +1,985 @@
+<?php
+/**
+ * 论坛模块，实现论坛基本功能：发帖、管理、版主、浏览等
+ * $Id$
+ */
+
+/**
+ * 写入论坛版块
+ * @param (object) $term
+ *  版块对象
+ * @param (bool) $validate
+ *  是否验证数据
+ */
+function forum_term_save(&$term, $validate = true, &$error = NULL) {
+  if ($validate && $error = forum_term_validate($term)){
+    // 未通过验证
+    return  false;
+  }
+  
+  if ($term->tid) {
+    $args = array('tid');
+    
+    if ($data = db_query('SELECT data FROM {forum_term} WHERE tid = ?',
+    array($term->tid), array('return' => 'column'))) {
+      if ($data = unserialize($data)) {
+        if (!is_array($term->data) || !$term->data) {
+          $term->data = $data;
+        } else {
+          $term->data = array_merge($data, $term->data);
+        }
+      }
+    }
+    
+    $term->is_update = true;
+  } else {
+    $args = NULL;
+    $term->is_update = false;
+  }
+  
+  if (db_write_record('forum_term', $term, $args)) {
+    
+    // 首席版主
+    if ($term->data['admins_first']) {
+      if (!$term->admins_first_uid) {
+        $term->admins_first_uid = db_query('SELECT uid FROM {users} WHERE name = ?',
+        array($term->data['admins_first']), array('return' => 'column'));
+      }
+      
+      if ($term->admins_first_uid) {
+        $admin = new stdClass;
+        $admin->tid = $term->tid;
+        $admin->uid = $term->admins_first_uid;
+        $admin->type = 1;
+        db_replace('forum_admin', $admin);
+      }
+    }
+    
+    module_invoke_all('forum_term_save', $term);
+    forum_get_cache_term(NULL, true);
+    return true;
+  }
+}
+
+/**
+ * @Implement of hook_forum_term_save()
+ */
+function forum_forum_term_save(&$term) {
+  /**
+   * 缓存版块版主信息，将所有版主信息写入 forum_term.data['admin']，提升效率
+   * 若增删版主后未及时更新，可能导致浏览页面版主信息滞后
+   */ 
+  if ($fetch = db_query('SELECT f.uid, u.name, f.type FROM {forum_admin} f INNER JOIN {users} u ON f.uid = u.uid 
+  WHERE tid = ? ORDER BY type DESC, weight ASC', array($term->tid))) {
+    $term->data['admins_first'] = '';
+    foreach ($fetch as $o) {
+      $term->data['admins'][$o->uid] = $o;
+      if ($o->type == 1) {
+        $term->data['admins_first'] = $o->name;
+      }
+    }
+    forum_set_data_term($term->tid, array(
+      'admins' => $term->data['admins'],
+      'admins_first' => $term->data['admins_first']
+    ));
+  }
+}
+
+/**
+ * 删除版块或分区，同时删除版块下主题、回复
+ * @param (int or object) $term
+ *  版块、分区 id，或版块、分区对象
+ */
+function forum_term_delete($term) {
+  if (!is_object($term) || !$term->tid) {
+    $term = forum_term_load($term);
+  }
+  
+  if ($term->tid) {
+    if ($o->pid > 0) {
+      // 版块， 删除版块下的主题
+      if ($fetch = db_query('SELECT * FROM {forum} WHERE tid = ?', array($term->tid))) {
+        foreach ($fetch as $o) {
+          forum_node_delete($o, 0);
+        }
+      }
+      
+      $text = t('forum', '删除版块');
+      
+    } else {
+      // 分区，递归删除分区
+      if ($fetch = db_query('SELECT * FROM {forum_term} WHERE pid = ?', array($term->tid))) {
+        foreach ($fetch as $o) {
+          forum_term_delete($o);
+        }
+      }
+      
+      $text = t('forum', '删除分区');
+    }
+    
+    // 删除数据
+    if (db_exec('DELETE FROM {forum_term} WHERE tid = ?', array($term->tid))) {
+      dd_log('forum_admin', $text, $term->tid);
+      module_invoke_all('forum_term_delete', $term);
+      return true;
+    }
+    
+  }
+}
+
+/**
+ * @Implement of hook_site_menu()
+*/ 
+function forum_site_menu(&$menu) {
+	$menu['forum']['#data'] = l('交流论坛', 'forum');
+	$menu['forum']['#weight'] = 100;
+}
+
+/**
+ * 写入版块自定义数据，即 forum_term.data，旧的数据将被覆盖，以键名为基准
+ * @param (int) $tid
+ *  版块 id
+ * @param (array) $datas
+ *  待写入的数据
+ */
+function forum_set_data_term($tid, array $datas = array()) {
+  if ($data = db_query('SELECT data FROM {forum_term} WHERE tid = ?',
+  array($tid), array('return' => 'column'))) {
+    if ($data = unserialize($data)) {
+      $datas = array_merge($data, $datas);
+    }
+    db_exec('UPDATE {forum_term} SET data = ? WHERE tid = ?',
+    array(serialize($datas), $tid));
+  }
+}
+
+/**
+ * 验证论坛版块数据
+ * @param (object) $term
+ *  版块对象
+ */
+function forum_term_validate(&$term) {
+  if (mb_strlen($term->name) > 60) {
+    $t['name']['#error'][] = t('forum', '版块名称长度不大于 60 个字符');
+  } else if ($term->data['admins_first'] && !$term->admins_first_uid = db_query('SELECT uid FROM {users} WHERE name = ?',
+  array($term->data['admins_first']), array('return' => 'column'))) {
+    $t['data']['admins_first']['#error'][] = t('forum', '无法设置版主，用户不存在');
+  } else if ($tid = db_query('SELECT tid FROM {forum_term} WHERE name = ?',
+  array($term->name), array('return' => 'column'))) {
+    if ($term->tid && $tid != $term->tid) {
+      $t['name']['#error'][] = t('forum', '名称已经存在');
+    }
+    if (!$term->tid) {
+      $t['name']['#error'][] = t('forum', '名称已经存在');
+    }
+  }
+  
+  module_invoke_all('forum_term_validate', $term);
+  
+  return $t;
+}
+
+/**
+ * 加载版块数据
+ * @param (object) $tid
+ *  版块 id
+ */
+function forum_term_load($tid) {
+  static $datas;
+  if (!isset($datas[$tid])) {
+    if ($o = db_query('SELECT * FROM {forum_term} WHERE tid = ?', array($tid), array('return' => 'one'))) {
+      if ($o->pid > 0 && $parent = var_get('forum_term_parent')) {
+        $o->parent->name = $parent[$o->pid];
+        $o->parent->tid = $o->pid;
+      }
+      
+      if ($o->data) {
+        $o->data = unserialize($o->data);
+      }
+      
+      if ($o->new) {
+        $o->new = unserialize($o->new);
+      }
+      
+      $datas[$tid] = $o;
+      
+    } else {
+      $datas[$tid] = false;
+    }
+  }
+  
+  return $datas[$tid];
+}
+
+/**
+ * 版块主题、回复计数，最新主题或回复更新
+ * @param (int) $tid
+ */
+function forum_term_set_count($tid) {
+  $new = array();
+  
+  if ($o = db_query('SELECT f.last_name, f.fid, f.uid, f.title, f.updated, u.name FROM {forum} 
+  f INNER JOIN {users} u ON f.uid = u.uid WHERE f.tid = ? ORDER BY f.updated DESC',
+  array($tid), array('return' => 'one', 'limit' => 1))) {
+    if ($o->last_name) {
+      $last = explode('|', $o->last_name, 4);
+      if ($last[1] > 0) {
+        
+        $new['url'] = url('forum/node/'.$o->fid, 
+        array('query' => 'page='.$last[1], 'fragment' => 'comment_forum_'.$last[0]));
+        
+      } else {
+        $new['url'] = url('forum/node/'.$o->fid, array('fragment' => 'comment_forum_'.$last[0]));
+      }
+      
+      $new['user']->uid = $last[2];
+      $new['user']->name = $last[3];
+      
+    } else {
+      $new['url'] = url('forum/node/'.$o->fid);
+      $new['user']->uid = $o->uid;
+      $new['user']->name = $o->name;
+    }
+    
+    $new['title'] = $o->title;
+    $new['timestamp'] = $o->updated;
+    
+  }
+  
+  if ($term = forum_term_load($term)) {
+    $new = array_merge($term->new, $new);
+  }  
+  
+  db_exec('UPDATE {forum_term} SET new = ?, comment_count = 
+  (SELECT COUNT(cid) FROM {comment} WHERE ext_type = ? AND ext_id2 = ? AND status > 0),
+  node_count = (SELECT COUNT(fid) FROM {forum} WHERE tid = ? AND status > 0) 
+  WHERE tid = ?', array(serialize($new), 'forum', $tid, $tid, $tid));
+}
+
+/**
+ * 论坛内容
+ */
+
+/**
+ *  保存主题
+ * @param (object) $node
+ *  主题对象
+ * @param (bool) $clear
+ *  是否清除相关缓存
+ */
+function forum_node_save(&$node, $clear = true) {
+  if (!isset($node->updated)) $node->updated = $_SERVER['REQUEST_TIME'];
+  
+  if ($node->fid) {
+    $args = array('fid');
+    $op = 'forum_node_save';
+    
+  } else {
+    if (!isset($node->created)) $node->created = $_SERVER['REQUEST_TIME'];
+    
+    if (!isset($node->uid)) {
+      $node->uid = $GLOBALS['user']->uid;
+    }
+    
+    $op = 'forum_node_insert';
+    $args = NULL;
+  }
+  
+  if (db_write_record('forum', $node, $args)) {
+    
+    if (!isset($node->term) || !$node->term->tid) {
+      $node->term = forum_term_load($node->tid);
+    }
+    
+    // reply_count
+    // node_count
+    // title
+    // url
+    // timestamp
+    // user
+    
+    if ($op == 'forum_node_insert') {
+    
+      // 更新版块最新的数据
+      
+      // 版块主题、评论总数
+      $count = db_query('SELECT COUNT(fid) AS f, SUM(comment_count) AS c FROM {forum} WHERE tid = ? AND status > 0',
+      array($node->tid), array('return' => 'one'));
+      
+      $new = array();
+      $new['title'] = $node->title;
+      $new['timestamp'] = $node->updated;
+      $new['user']->uid = $node->uid;
+      $new['user']->name = $GLOBALS['user']->name;
+      $new['url'] = 'forum/node/'.$node->fid;
+      
+      if ($node->term->new) {
+        $new = array_merge($node->term->new, $new);
+      }
+      
+      db_exec('UPDATE {forum_term} SET new = ?, node_count = ?, comment_count = ? WHERE tid = ?',
+      array(serialize($new), $count->f, $count->c, $node->tid));
+    
+    } else {
+      dd_log('forum_node', t('forum', '编辑主题：!title', array('!title' => $node->title)), $node->fid);
+    }
+    //pinglun($node->fid);
+    module_invoke_all($op, $node);
+    return true;
+  }
+  
+}
+
+/**
+ * 载入主题对象
+ * @param (object) $fid
+ */
+function forum_node_load($fid) {
+  static $datas;
+  if (!isset($datas[$fid])) {
+    if ($o = db_query('SELECT f.*, u.name FROM {forum} f INNER JOIN {users} u 
+    ON f.uid = u.uid WHERE f.fid = ? AND f.status > 0', array($fid), array('return' => 'one'))) {
+      
+      // 版块对象 
+      $o->term = forum_term_load($o->tid);
+
+      $prev = db_query('SELECT title,fid FROM {forum} WHERE fid < ? and tid = ? order by fid desc', array($fid,$o->tid), array('return' => 'one'));
+			if($prev){
+				$o->prev_link = l($prev->title, 'forum/node/'.$prev->fid);        //上一篇链接
+			}
+			$next = db_query('SELECT title,fid FROM {forum} WHERE fid > ? and tid = ? order by fid asc', array($fid,$o->tid), array('return' => 'one'));
+			if($next){
+				$o->next_link = l($next->title, 'forum/node/'.$next->fid);        //下一篇链接
+			}
+
+      $datas[$fid] = $o;
+       
+    } else {
+      $datas[$fid] = false;
+    }
+  }
+  
+  return $datas[$fid];
+}
+
+/**
+ * 删除主题，同时删除回复
+ * @param (int or object) $node
+ *  主题 id，或主题对象
+ * @param (bool) $clear
+ *  是否清除相关缓存，如：更新所在版块的统计信息
+ */
+function forum_node_delete($node, $clear = true) {
+  if (!is_object($node) || !$node->fid) {
+    $node = forum_node_load($node);
+  }
+  
+  if ($node->fid) {
+    
+    // 删除评论
+    db_exec('DELETE FROM {comment} WHERE ext_type = ? AND ext_id = ?', array('forum', $node->fid));
+    
+    if (db_exec('DELETE FROM {forum} WHERE fid = ?', array($node->fid))) {
+      module_invoke_all('forum_node_delete', $node, $clear);
+      if ($clear) {
+        forum_term_set_count($node->tid);
+      }
+      dd_log('forum_admin', t('forum', '删除主题：!title', array('!title' => $node->title)), $node->tid);
+      return true;
+    }
+  }
+  
+}
+
+/**
+ * 主题回复计数更新
+ * @param (int) $fid
+ */
+function forum_node_set_count($fid) {
+  db_exec('UPDATE {forum} SET comment_count = (SELECT COUNT(cid) FROM {comment} 
+  WHERE ext_type = ? AND ext_id = ? AND status > 0) WHERE fid = ?',
+  array('forum', $fid, $fid));
+}
+
+/**
+ * @Implement of hook_menu()
+ */
+function forum_menu() {
+  $items = array();
+  $items['admin/forum/settings'] = array(
+    'title' => '论坛设置',
+    'access_arguments' => array('admin forum settings'),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('forum_admin_settings'),
+    'file' => 'forum.admin.inc',
+  );
+  $items['admin/forum/node'] = array(
+    'title' => '主题管理',
+    'access_arguments' => array('admin forum node'),
+    'page_callback' => 'forum_admin_node',
+    'file' => 'forum.admin.inc',
+  );
+  $items['admin/forum/reply'] = array(
+    'title' => '回帖管理',
+    'access_arguments' => array('admin forum reply'),
+    'page_callback' => 'forum_admin_reply',
+    'file' => 'forum.admin.inc',
+  );
+  $items['admin/forum/term'] = array(
+    'title' => '版块管理',
+    'access_arguments' => array('admin forum term'),
+    'page_callback' => 'forum_admin_term',
+    'file' => 'forum.admin.inc',
+  );
+  $items['admin/forum/term/parent'] = array(
+    'title' => '添加分区',
+    'access_arguments' => array('admin forum term'),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('forum_admin_term_form', NULL, 'parent'),
+    'file' => 'forum.admin.inc',
+  );
+  $items['admin/forum/term/add'] = array(
+    'title' => '添加版块',
+    'access_arguments' => array('admin forum term'),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('forum_admin_term_form'),
+    'file' => 'forum.admin.inc',
+  );
+  $items['admin/forum/term/edit/%'] = array(
+    'load_functions' => array(4 => array('forum_term_load')),
+    'title' => '编辑版块',
+    'access_arguments' => array('admin forum term'),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('forum_admin_term_form', 4),
+    'file' => 'forum.admin.inc',
+  );
+  $items['admin/forum/admin'] = array(
+    'title' => '版主管理',
+    'access_arguments' => array('admin forum admin'),
+    'page_callback' => 'forum_admin_admin',
+    'file' => 'forum.admin.inc',
+  );
+  $items['admin/forum/admin/add'] = array(
+    'title' => '添加版主',
+    'access_arguments' => array('admin forum admin'),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('forum_admin_admin_form'),
+    'file' => 'forum.admin.inc',
+  );
+  $items['forum'] = array(
+    'title' => '论坛',
+    'access_arguments' => array('forum view'),
+    'page_callback' => 'forum_view',
+    'file' => 'forum.page.inc',
+  );
+  $items['forum/%'] = array(
+    'load_functions' => array(1 => array('forum_term_load')),
+    'description' => '论坛版块',
+    'access_callback' => 'forum_is_term_view',
+    'access_arguments' => array(1),
+    'page_callback' => 'forum_term_view',
+    'page_arguments' => array(1),
+    'file' => 'forum.page.inc',
+  );
+  /*
+  $items['forum/%/essence'] = array(
+    'load_functions' => array(1 => array('forum_term_load')),
+    'description' => '版块精华主题',
+    'access_callback' => 'forum_is_term_view',
+    'access_arguments' => array(1),
+    'page_callback' => 'forum_term_essence_view',
+    'page_arguments' => array(1),
+    'file' => 'forum.page.inc',
+  );
+  */
+  $items['forum/add/%'] = array(
+    'load_functions' => array(2 => array('forum_term_load')),
+    'title' => '发布主题',
+    'access_callback' => 'forum_is_node_created',
+    'access_arguments' => array(2),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('forum_node_form', 2),
+    'file' => 'forum.form.inc',
+  );
+  $items['forum/node/%'] = array(
+    'load_functions' => array(2 => array('forum_node_load')),
+    'description' => '论坛主题',
+    'access_callback' => 'forum_is_node_view',
+    'access_arguments' => array(2),
+    'page_callback' => 'forum_node_view',
+    'page_arguments' => array(2),
+    'file' => 'forum.page.inc',
+  );
+  $items['forum/node/%/edit'] = array(
+    'load_functions' => array(2 => array('forum_node_load')),
+    'description' => '编辑主题',
+    'access_callback' => 'forum_is_node_update',
+    'access_arguments' => array(2),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('forum_node_form', '', 2),
+    'file' => 'forum.form.inc',
+  );
+  $items['forum/node/%/delete'] = array(
+    'load_functions' => array(2 => array('forum_node_load')),
+    'description' => '删除主题',
+    'access_callback' => 'forum_is_node_delete',
+    'access_arguments' => array(2),
+    'page_callback' => 'forum_page_node_delete',
+    'page_arguments' => array(2),
+    'file' => 'forum.page.inc',
+  );
+  $items['forum/node/%/top'] = array(
+    'load_functions' => array(2 => array('forum_node_load')),
+    'description' => '加入或取消置顶',
+    'access_callback' => 'forum_is_node_admin',
+    'access_arguments' => array(2),
+    'page_callback' => 'forum_page_node_top',
+    'page_arguments' => array(2),
+    'file' => 'forum.page.inc',
+  );
+  $items['forum/node/%/essence'] = array(
+    'load_functions' => array(2 => array('forum_node_load')),
+    'description' => '加入或取消精华',
+    'access_callback' => 'forum_is_node_admin',
+    'access_arguments' => array(2),
+    'page_callback' => 'forum_page_node_essence',
+    'page_arguments' => array(2),
+    'file' => 'forum.page.inc',
+  );
+  $items['user/%/forum'] = array(
+    'load_functions' => array(1 => array('user_load')),
+    'access_arguments' => array('forum view'),
+    'page_callback' => 'forum_user_view',
+    'page_arguments' => array(1),
+    'file' => 'forum.page.inc',
+    'description' => '用户发布的主题',
+  );
+  $items['user/%/forum/reply'] = array(
+    'load_functions' => array(1 => array('user_load')),
+    'access_arguments' => array('forum view'),
+    'page_callback' => 'forum_user_reply',
+    'page_arguments' => array(1),
+    'file' => 'forum.page.inc',
+    'description' => '用户发布的回帖',
+  );
+  return $items;
+}
+
+/**
+ * 验证版块访问权限
+ * @param (object) $term
+ */
+function forum_is_term_view($term, $ac = NULL) {
+  if (!isset($ac)) $ac = $GLOBALS['user'];
+  if ($ac->uid == 1) return true;
+  
+  // 正常版块，且当前用户拥有浏览论坛的权限
+  if ($term->type == 1 && user_access('forum view', $ac)) {
+    return true;
+  }
+  
+  // 私密版块，判断用户权限
+  if ($term->type == 0) {
+
+    // 判断用户所在角色组是否被允许访问
+    if ($term->data['access'] && $term->data['access']['view']) {
+      foreach ($ac->roles as $rid => $k) {
+        if (in_array($rid, $term->data['access']['view'])) {
+          return true;
+        }
+      }
+    }
+    
+    // 查询用户是否被允许访问
+    if ($ac->uid && db_query('SELECT uid FROM {forum_term_access} WHERE tid = ? AND uid = ? AND type = 0',
+    array($term->tid, $ac->uid), array('return' => 'column'))) {
+      return true;
+    }
+    
+  }
+  
+  // 外部链接版块
+  return $term->type == -1;
+}
+
+/**
+ * 验证版块内主题发布权限
+ * @param (object) $term
+ */
+function forum_is_node_created($term, $ac = NULL) {
+  if (!isset($ac)) $ac = $GLOBALS['user'];
+  if ($ac->uid == 1) return true;
+  
+  if ($term->pid == 0 && $term->type == -1) {
+    return false;
+  }
+  
+   if ($term->type > 0) {
+     // 公共版块
+     return user_access('forum add', $ac);
+  
+   } else if ($term->type == 0) {
+    // 私密版块
+    // 判断用户所在角色组是否被允许发表
+    if ($term->data['access'] && $term->data['access']['create']) {
+      foreach ($ac->roles as $rid => $k) {
+        if (in_array($rid, $term->data['access']['create'])) {
+          return true;
+        }
+      }
+    }
+    
+    // 查询用户是否被允许发表
+    if ($ac->uid && db_query('SELECT uid FROM {forum_term_access} WHERE tid = ? AND uid = ? AND type = 1',
+    array($term->tid, $ac->uid), array('return' => 'column'))) {
+      return true;
+    }
+  }
+  
+}
+
+/**
+ * 验证主题浏览权限
+ * @param (object) $node
+ *  主题对象
+ */
+function forum_is_node_view($node, $ac = NULL) {
+  // 拥有所有主题管理权限的用户，不受任何限制
+  if (user_access('admin forum node', $ac)) {
+    return true;
+  }
+  
+  if ($node->status > 0) {
+    
+    if (!isset($node->term) || $node->term->tid) {
+      $node->term = forum_term_load($node->tid);
+    }
+    return user_access('forum view') && forum_is_term_view($node->term, $ac);
+    
+  }
+}
+
+/**
+ * 验证主题编辑权限
+ * @param (object) $node
+ *  主题对象
+ */
+function forum_is_node_update($node) {
+  
+  // 拥有所有主题管理权限的用户，不受任何限制
+  if (user_access('admin forum node')) {
+    return true;
+  }
+  
+  if ($GLOBALS['user']->uid > 0) { 
+    // 版主是否允许编辑，全局设置，待补充
+    
+    /**
+     * 作者只允许编辑未发布和正常的主题
+     * 已锁定或回收站的主题，作者不允许编辑
+     */
+    if ($GLOBALS['user']->uid == $node->uid && ($node->status == 0 || $node->status == 1)) {
+      
+      if (!isset($node->term) || !$node->term->tid) {
+        $node->term = forum_term_load($node->tid);
+      }
+      
+      // 没有版块浏览权限，不允许编辑
+      return forum_is_term_view($node->term);
+      
+    }
+  }
+  
+}
+
+/**
+ * 验证主题管理权限
+ * @param (object) $node
+ */
+function forum_is_node_admin($node) {
+  // 拥有所有主题管理权限的用户，不受任何限制
+  if (user_access('admin forum node')) {
+    return true;
+  }
+  
+  // 版主可管理
+  
+  if ($GLOBALS['user']->uid > 0) { 
+  
+    if (!isset($term) || !$node->term->tid) {
+      $node->term = forum_term_load($node->tid);
+    }
+    
+    if ($node->term->data['admins']) {
+      foreach ($node->term->data['admins'] as $admin) {
+        // 用户为当前版块版主
+        if ($admin->uid == $GLOBALS['user']->uid) {
+          return true;
+        }
+      }
+    }
+    
+  }
+  
+}
+
+/**
+ * 验证主题删除权限
+ * @param (object) $node
+ *  主题对象
+ */
+function forum_is_node_delete($node) {
+  
+  // 拥有所有主题管理权限的用户，不受任何限制
+  if (user_access('admin forum node')) {
+    return true;
+  }
+  
+  // 版主允许删除。全局设置：是否允许删除，待补充
+  
+  if ($GLOBALS['user']->uid > 0) { 
+  
+    if (!isset($term) || !$node->term->tid) {
+      $node->term = forum_term_load($node->tid);
+    }
+    
+    if ($node->term->data['admins']) {
+      foreach ($node->term->data['admins'] as $admin) {
+        // 用户为当前版块版主
+        if ($admin->uid == $GLOBALS['user']->uid) {
+          return true;
+        }
+      }
+    }
+    
+  }
+
+}
+
+/**
+ * @Implement of hook_perm()
+ */
+function forum_perm() {
+  return array(
+    'forum view' => t('forum', '浏览论坛'),
+    'forum add' => t('forum', '发表主题'),
+    'forum reply add' => t('forum', '发表回帖'),
+    'admin forum term' => t('forum', '管理论坛版块'),
+    'admin forum admin' => t('forum', '设置版主'),
+    'admin forum node' => t('forum', '管理所有主题'),
+    'admin forum reply' => t('forum', '管理所有回帖'),
+  );
+}
+
+/**
+ * @Implement of hook_system_admin_menus()
+ */
+function forum_system_admin_menus() {
+  return array(array(
+    //array(t('forum', '主题管理'), 'admin/forum/node'),
+    //array(t('forum', '回复管理'), 'admin/forum/reply'),
+    array(t('forum', '版块管理'), 'admin/forum/term'),
+    //array(t('forum', '版主管理'), 'admin/forum/admin'),
+    //array(t('forum', '论坛设置'), 'admin/forum/settings'),
+    //array(t('forum', '论坛统计'), 'admin/forum/statistics'),
+  ), t('forum', '论坛管理'));
+}
+
+/**
+ * @Implement of hook_theme()
+ */
+function forum_theme() {
+  return array(
+    'forum_front' => array(
+      'tpl' => 'front.tpl.php',
+      'title' => t('forum', '论坛首页'),
+      'args' => array('forum'),
+    ),
+    'forum_term' => array(
+      'tpl' => 'term.tpl.php',
+      'title' => t('forum', '版块首页'),
+      'args' => array('term'),
+    ),
+    'forum_node' => array(
+      'tpl' => 'node.tpl.php',
+      'title' => t('forum', '主题浏览'),
+      'args' => array('node'),
+    ),
+  );
+}
+
+/**
+ * @Implement of hook_comment_info()
+ */
+function forum_comment_info() {
+  return array(
+    'forum' => array(
+      'name' => '回帖',
+      'default_status' => 1,
+			'editor_html' => 1,
+    )
+  );
+}
+
+/**
+ * @Implement of hook_comment_save()
+ */
+function forum_comment_save($comment) {
+  if ($comment->ext_type == 'forum') {
+    
+    if ($comment->status == 0) return; 
+    
+    // 主题回复计数
+    if ($comment->ext_id) {
+      if (!isset($comment->name)) {
+        if ($comment->uid == $GLOBALS['user']->uid) {
+          $comment->name = $GLOBALS['user']->name;
+        } else {
+          $comment->name = db_query('SELECT name FROM {users} WHERE uid = ?',
+          array($comment->uid), array('return' => 'column'));
+        }
+      }
+      
+      $comment_count = db_query('SELECT COUNT(cid) FROM {comment} WHERE ext_type = ? AND ext_id = ? AND status > 0',
+      array('forum', $comment->ext_id), array('return' => 'column'));
+      
+      $pager_count = var_get_key('forum', 'term_pager_count_'.$comment->ext_id2, 50);
+      
+      if ($comment_count > $pager_count) {
+        $comment->go_pager = ceil($comment_count/$pager_count);
+        
+        $new_url = url('forum/node/'.$comment->ext_id,
+        array('query' => 'page='.$comment->go_pager, 'fragment' => 'comment_forum_'.$comment->cid));
+        
+      } else {
+        
+        $new_url = url('forum/node/'.$comment->ext_id, array('fragment' => 'comment_forum_'.$comment->cid));
+        $comment->go_pager = 0;
+        
+      }
+      
+      // 评论 id、所处页码、回复者昵称
+      $last_name = $comment->cid.'|' . $comment->go_pager . '|' .$comment->uid. '|' . $comment->name;
+      
+      db_exec('UPDATE {forum} SET comment_count = ?, updated = ?, last_name = ? 
+      WHERE fid = ?', array($comment_count, $comment->updated, $last_name, $comment->ext_id));
+      
+    }
+    
+      // 版块回复计数，最新数据
+    if ($comment->ext_id2) {
+      
+      $new = array();
+      $new['title'] = $comment->title;
+      $new['timestamp'] = $comment->updated;
+      $new['user']->uid = $comment->uid;
+      $new['user']->name = $comment->name;
+      $new['url'] = $new_url;
+      
+      if ($term = forum_term_load($term)) {
+        $new = array_merge($term->new, $new);
+      }
+      
+      db_exec('UPDATE {forum_term} SET new = ?, comment_count = 
+      (SELECT COUNT(cid) FROM {comment} WHERE ext_type = ? AND ext_id2 = ? AND status > 0) 
+      WHERE tid = ?', array(serialize($new), 'forum', $comment->ext_id2, $comment->ext_id2));
+    }
+    
+  }
+}
+
+/**
+ * @Implement of hook_comment_goto()
+ */
+function forum_comment_goto($comment) {
+  if ($comment->ext_type == 'forum') {
+    return 'forum/node/'.$comment->ext_id;
+  }
+}
+
+/**
+ * @Implement of hook_comment_delete()
+ */
+function forum_comment_delete($comment) {
+  if ($comment->ext_type == 'forum') {
+    forum_term_set_count($comment->ext_id2);
+    forum_node_set_count($comment->ext_id);
+    dd_log('forum_comment', t('forum', '删除评论，ID：!id', array('!id' => $comment->cid)), $comment->ext_id);
+    $comment->redirect = 'forum/node/'.$comment->ext_id;
+  }
+}
+
+/**
+ * @Implement of hook_comment_is_delete()
+ */
+function forum_comment_is_delete($comment) {
+  if ($comment->ext_type == 'forum') {
+    if ($node = forum_node_load($comment->ext_id)) {
+      return forum_is_node_admin($node);
+    }
+    return false;
+  }
+}
+
+/**
+ * @Implement of hook_comment_is_update()
+ */
+function forum_comment_is_update($comment) {
+  if ($comment->ext_type == 'forum') {
+    
+    if ($comment->uid == $GLOBALS['user']->uid) {
+      return true;
+    }
+    
+    $node = forum_node_load($comment->ext_id);
+    return forum_is_node_update($node);
+    
+  }
+}
+
+/**
+ * @Implement of hook_comment_is_update()
+ */
+function forum_comment_is_create($comment) {
+  if ($comment->ext_type == 'forum') {
+    
+    return user_access('forum reply add');
+    
+  }
+}
+
+/**
+ * 论坛版块缓存，仅缓存 tid、name、pid
+ * @param (int) $tid
+ *  获取指定 id 的版块数据
+ * @param (bool) $clear
+ *  是否清除缓存
+ */
+function forum_get_cache_term($tid = NULL, $clear = NULL) {
+  static $data;
+  if ($clear || !isset($data)) {
+    $data = array();
+    if (!$clear && $cache = cache_get('forum_get_cache_term')) {
+      $data = $cache->data;
+    } else if($fetch = db_query('SELECT tid, pid, name FROM {forum_term} ORDER BY weight ASC, tid DESC')){
+      foreach($fetch as $o){
+        $data[$o->tid] = $o;
+        if ($o->pid == 0) {
+          $parent[$o->tid] = $o->name;
+        }
+      }
+      cache_set('forum_get_cache_term', $data);
+      var_set('forum_term_parent', $parent);
+    }
+  }
+  return $tid ? $data[$tid] : $data;
+}
+
+/**
+ * 版块类型
+ * @param (string) $key
+ */
+function forum_get_term_types($key = NULL) {
+  $types = array(0 => '秘密版块', 1 => '公开版块');
+  return isset($key) ? $types[$key] : $types; 
+}

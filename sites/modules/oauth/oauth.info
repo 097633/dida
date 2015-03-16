@@ -1,0 +1,9 @@
+<?php
+// $Id$
+
+$info = array(
+  'name' => '新浪开放平台接口',
+  'description' => '目前实现新浪微博部分功能',
+  'ver' => '1.0',
+  'language' => 'zh-hans',
+);

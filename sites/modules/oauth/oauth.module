@@ -1,0 +1,682 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * 实现一些开放平台部分功能(sina,qq,renren)
+ */
+
+/**
+ * Implementation of hook_menu.
+ */
+function oauth_menu() {
+	$items['oauth/sina'] = array(
+		'description'     => '新浪微博帐号登录或绑定',
+		'page_callback'   => 'oauth_sina_validate',
+		'access_callback' => true,
+		'file'            => 'oauth.pages.inc',
+	);
+
+	$items['oauth/renren'] = array(
+		'description'     => 'renren帐号登录或绑定',
+		'page_callback' 	=> 'oauth_renren_validate',
+		'access_callback' => true,
+		'file' 						=> 'oauth.pages.inc',
+	);
+
+	$items['oauth/qq'] = array(
+		'description' 		=> 'qq帐号登录或绑定',
+		'page_callback' 	=> 'oauth_qq_validate',
+		'access_callback' => true,
+		'file' 						=> 'oauth.pages.inc',
+	);
+
+	$items['admin/oauth/settings'] = array(
+		'title' 					=> '开发平台设置',
+		'page_callback' 	=> 'dd_get_form',
+		'page_arguments' 	=> array('oauth_admin_settings'),
+		'access_arguments'=> array('admin oauth'),
+		'file' 						=> 'oauth.admin.inc',
+	);
+
+	$items['admin/oauth/users'] = array(
+		'title' 					=> '开发平台用户管理',
+		'page_callback' 	=> 'oauth_admin_users',
+		'access_arguments'=> array('admin oauth'),
+		'file' 						=> 'oauth.admin.inc',
+	);
+	return $items;
+}
+
+/**
+ * @Implement of hook_perm()
+ */
+function oauth_perm() {
+	return array(
+		'admin oauth' => t('oauth', '管理oauth模块'),
+	);
+}
+
+/**
+ * @Implement of hook_system_admin_menus()
+ * 管理菜单
+ */
+function oauth_system_admin_menus() {
+	return array(array(
+		array(t('oauth', '开放平台设置'), 'admin/oauth/settings'),
+		array(t('oauth', '开放平台用户'), 'admin/oauth/users'),
+	), t('oauth', '开放平台'));
+}
+
+/**
+ * @Implement of hook_form_alter()  .'<br />'.l('使用qq账号登录', 'oauth/qq')
+
+function oauth_form_alter($form_id, $form_token, &$form) {
+	global $user;
+
+	switch ($form_id) {
+	case 'user_login_form':
+			$form['fields']['account'] = array(
+				'#type' => 'label',
+				 '#suffix' => l('使用新浪微博登录', 'oauth/sina'),
+				'#attributes' => array(
+					'id' => 'user_login',
+					'size' => 50,
+					'class' => "{required:true, messages:{required:'请输入用户名'}}"
+				),
+			); 
+    break;
+	}
+}
+ */
+/**
+ * @Implement of hook_user_load()
+ */
+function oauth_user_load(&$ac) {
+	$ac->oauth = oauth_get_user_info($ac->uid);
+}
+
+/**
+ * @Implement of hook_user_delete()
+ */
+function oauth_user_delete(&$ac) {
+	db_query('DELETE FROM {oauth_user} WHERE uid = ?', array($ac->uid));
+}
+
+/**
+ * 获取用户绑定信息
+ * @param (int) $uid
+ *  用户 id
+ * @param ()
+ */
+function oauth_get_user_info($uid = 0, $clear = NULL) {
+	static $datas;
+
+	if (!isset($datas[$uid]) || $clear) {
+		$datas[$uid] = false;
+
+		if ($uid) {
+			if ($o = db_query('SELECT oauth_uid, token, timestamp FROM {oauth_user} WHERE uid = ?',
+				array($uid), array('return' => 'one'))) {
+
+					$o->uid = $uid;
+					if ($o->token) {
+						$o->token = unserialize($o->token);
+					}
+					if ($o->data) {
+						$o->data = unserialize($o->data);
+					}
+					if ($o->config) {
+						$o->config = unserialize($o->config);
+					}
+					$datas[$uid] = $o;
+				}
+		}
+	}
+
+	return $datas[$uid];
+}
+
+/**
+ * 创建 http 请求
+ * @param (array) $params
+ */
+function oauth_get_request(array $params, $user_from) {
+	$request = new stdClass;
+
+	if ($consumer_key = var_get_key('oauth', $user_from.'_oauth_consumer_key', false)) {
+		$consumer_secret = var_get_key('oauth', $user_from.'_oauth_consumer_secret', false);
+	}
+	if ($user_from == 'renren') {
+		$consumer_redirect = var_get_key('oauth', 'renren_oauth_consumer_redirect_uri', false);
+	}
+
+	// 默认参数
+	$defaults = array( 
+		'oauth_version' => '2.0', // 版本
+		'oauth_nonce'=>rand(1000,99999999),
+		'oauth_timestamp' => time(), // 发起请求的时间戳
+		'oauth_consumer_key' => $consumer_key, // app key
+		'oauth_consumer_secret' => $consumer_secret, // app 密钥
+		'oauth_signature_method' => 'HMAC-SHA1', // 签名方式
+	);
+
+	// 合并
+	$params = array_merge($defaults, $params);
+
+	if (isset($params['oauth_consumer_key'])) {
+		$request->consumer->key = $params['oauth_consumer_key'];
+	} else {
+		dd_set_message(t('oauth', '木有提供'.$user_from.'app key'), 'error');
+		return false;
+	}
+
+	if (isset($params['oauth_consumer_secret']) && $params['oauth_consumer_secret']) {
+		$request->consumer->secret = $params['oauth_consumer_secret'];
+	} else {
+		$request->consumer->secret = NULL;
+	}
+
+	unset($params['oauth_consumer_secret']);
+
+	// 访问令牌
+	$request->token = NULL;
+	if (isset($params['oauth_access_token_key'])) {
+		$request->token->key = $params['oauth_access_token_key'];
+		unset($params['oauth_access_token_key']);
+	}
+
+	if (isset($params['oauth_access_token_secret'])) {
+		$request->token->secret = $params['oauth_access_token_secret'];
+		unset($params['oauth_access_token_secret']);
+	}
+
+	$uid = isset($params['uid']) ? $params['uid'] : $GLOBALS['user']->uid;
+
+	if ($request->token->key && !isset($params['oauth_token'])) {
+		$params['oauth_token'] = $request->token->key;
+	}
+
+	unset($params['uid'], $params['pic']);
+
+	if (isset($params['http_method'])) {
+		$request->http_method = $params['http_method'];
+		unset($params['http_method']);
+	} else {
+		$request->http_method = 'POST';
+	}
+
+	if (isset($params['http_url'])) {
+		$request->http_url = $params['http_url'];
+		unset($params['http_url']);
+	} else {
+		return false;
+	}
+
+	// 参数中不允许包含签名
+	if (isset($params['oauth_signature'])) {
+		unset($params['oauth_signature']);
+	}
+
+	$keys 	= oauth_urlencode_rfc3986(array_keys($params));
+	$values = oauth_urlencode_rfc3986(array_values($params));
+	$params = array_combine($keys, $values);
+
+	uksort($params, 'strcmp');
+
+	$pairs = $urls = array();
+
+	foreach ($params as $key => $value ) {
+		if (is_array($value)) {
+
+			natsort($value);
+
+			foreach ($value as $v2) {
+				$pairs[] = $key . '=' . $v2;
+				$urls[] = $key . '[]=' . $v2;
+			}
+		} else {
+			$pairs[] = $key . '=' . $value;
+			$urls[] = $key . '=' . $value;
+		}
+	}
+
+
+	$parts = array($request->http_method, $request->http_url, implode('&', $pairs));
+
+	// 待签名基本字符串
+	$request->base_string = implode('&', oauth_urlencode_rfc3986($parts));
+
+	if ($request->consumer->secret) {
+
+		$key_parts = array(
+			$request->consumer->secret,
+			$request->token ? $request->token->secret : ""
+		);
+
+		$key_parts = oauth_urlencode_rfc3986($key_parts);
+		$key = implode('&', $key_parts);
+
+		$request->sign = base64_encode(hash_hmac('sha1', $request->base_string, $key, true));
+
+	} 
+	
+	if (!$request->sign) {
+		dd_set_message(t('sina_open', '无法取得签名'), 'error');
+		return false;
+	}
+
+	$urls[oauth_signature] = 'oauth_signature='.oauth_urlencode_rfc3986($request->sign);
+	$request->field_data = $urls;
+	$request->to_data = implode('&', $urls);
+	
+	return $request;
+}
+
+
+/**
+ * 获取授权令牌，让用户使用此链接跳转到新浪进行授权
+ * @param (array) $values
+ */
+function oauth_login_url($user_from, array $values = array()) {
+
+		if ($user_from == 'sina') {
+		if (!isset($values['http_url'])) {
+			// 请求未授权令牌 url
+			$values['http_url'] = 'https://api.weibo.com/oauth2/authorize';
+		}
+
+		if (isset($_GET['oauth_callback'])) {
+			$oauth_callback = $_GET['oauth_callback'];
+		} else if (isset($values['oauth_callback'])) {
+			$oauth_callback = $values['oauth_callback'];
+			unset($values['oauth_callback']);
+		} else {
+
+			if (isset($_REQUEST['redirect'])) {
+				$query = 'op=validate&redirect=' . $_REQUEST['redirect'];
+			} else {
+				$query = 'op=validate';
+			}
+
+			$oauth_callback = url('oauth/sina', array('query' => $query, 'absolute' => true));
+		}
+
+		$url  = 'https://api.weibo.com/oauth2/authorize?response_type=code';
+		$url .= '&client_id='.var_get_key('oauth', 'sina_oauth_consumer_key',368364737);
+		$url .= '&redirect_uri='.urlencode($oauth_callback);
+		return $url;
+	} 
+
+	if ($user_from == 'renren') {
+		// 获取Authorization Code
+		if (!isset($values['http_url'])) {
+			$values['http_url'] = 'https://graph.renren.com/oauth/authorize';
+		}
+
+		if (isset($_GET['oauth_callback'])) {
+			$oauth_callback = $_GET['oauth_callback'];
+		} else if (isset($values['oauth_callback'])) {
+			$oauth_callback = $values['oauth_callback'];
+			unset($values['oauth_callback']);
+		} else {
+
+			if (isset($_REQUEST['redirect'])) {
+				$query = 'op=validate&redirect=' . $_REQUEST['redirect'];
+			} else {
+				$query = 'op=validate';
+			}
+
+			$oauth_callback = url('oauth/renren', array('query' => $query, 'absolute' => true));
+		}
+
+		if (!$request = oauth_get_request($values, 'renren')) {
+			return false;
+		}
+
+		$headers = array(
+			'User-Agent' => 'Sae T OAuth v0.2.0-beta2',
+			'Content-Type' => 'application/x-www-form-urlencoded; charset=utf-8'
+		);
+
+		$result = dd_http_request($request->http_url, $request->to_data, 'POST', $headers);
+
+		//if ($result->data && strpos($result->data, 'oauth_token_secret') !== false) {
+		$token = oauth_open_parse_parameters($result->data);
+		//	if ($token['oauth_token_secret']) {
+		$tok = new stdClass;
+		$tok->key = $token['oauth_token'];
+		$tok->secret = $token['oauth_token_secret'];
+
+		$_SESSION['oauth_token'] = $tok;
+
+		$url  = 'https://graph.renren.com/oauth/authorize?response_type=code';
+		$url .= '&client_id='.var_get_key('oauth', 'renren_oauth_consumer_key');
+		$url .= '&redirect_uri='.urlencode($oauth_callback);
+		return $url;
+		//	}
+		//	}
+	}
+	if ($user_from == 'qq') {
+		// 获取Authorization Code
+		if (!isset($values['http_url'])) {
+			$values['http_url'] = 'https://graph.qq.com/oauth2.0/authorize';
+		}
+		if (isset($_GET['oauth_callback'])) {
+			$oauth_callback = $_GET['oauth_callback'];
+		} else if (isset($values['oauth_callback'])) {
+			$oauth_callback = $values['oauth_callback'];
+			unset($values['oauth_callback']);
+		} else {
+
+			if (isset($_REQUEST['redirect'])) {
+				$query = 'op=validate&redirect=' . $_REQUEST['redirect'];
+			} else {
+				$query = 'op=validate';
+			}
+
+			$oauth_callback = url('oauth/qq', array('query' => $query, 'absolute' => true));
+		}
+		
+		$url  = 'https://graph.qq.com/oauth2.0/authorize?response_type=code';
+		$url .= '&client_id='.var_get_key('oauth','qq_oauth_consumer_key',false);
+		$url .= '&redirect_uri='.urlencode($oauth_callback);
+		$url .= '&state='.md5(uniqid(rand(), TRUE));
+		$url .= '&scope=get_user_info,get_info,add_t';
+		return $url;
+	}
+	return false;
+}
+
+/**
+ * 获取访问令牌，用户已授权，根据授权令牌获得访问令牌
+ * @param (array) $values
+ */
+function oauth_access_token($user_from, array $values = array()) {
+	if ($user_from == 'sina') {
+		$url = 'https://api.weibo.com/oauth2/access_token';
+		$data .= 'client_id='.var_get_key('oauth','sina_oauth_consumer_key',false);
+		$data .= '&redirect_uri='.urlencode(url('oauth/sina', array('query'=>'op=validate', 'absolute' => true)));
+		$data .= '&grant_type=authorization_code';
+		$data .= '&code='.$_GET['code'];
+		$data .= '&client_secret='.var_get_key('oauth','sina_oauth_consumer_secret',false);
+		$result = dd_http_request($url, $data, $method = 'POST', $headers = array());
+		$tok = $result->data;
+		return $tok;
+	}
+	if ($user_from == 'renren') {
+		if (!isset($values['oauth_access_token_key']) && isset($_SESSION['oauth_token'])) {
+			$values['http_url'] = 'https://graph.renren.com/oauth/token';
+			$values['client_id'] = '7fe2cb13b64c4a33a9c83ac0654d5af9';
+			$values['client_secret'] = 'de8780a950a54da6b28f84277f9ff5d3';
+			$values['grant_type'] = 'authorization_code';
+			$values['code'] = $_GET['code'];
+			$values['redirect_uri'] = var_get_key('oauth', 'renren_oauth_consumer_redirect_uri').'?op=validate';
+		}
+		$result = oauth_set_request($user_from, $values['http_url'], $values);
+	}
+
+	if ($user_from == 'qq') {
+		$url  = 'https://graph.qq.com/oauth2.0/token?grant_type=authorization_code';
+		$url .= '&client_id='.var_get_key('oauth', 'qq_oauth_consumer_key', NULL);
+		$url .= '&redirect_uri='.urlencode(url('oauth/qq', array('query'=>'op=validate', 'absolute' => true)));
+		$url .= '&state='.$_GET['state'];
+		$url .= '&code='.$_GET['code'];
+		$url .= '&client_secret='.var_get_key('oauth','qq_oauth_consumer_secret',false);
+		$tok = file_get_contents($url);
+		return $tok;
+	}
+
+	if ($result->data) {
+		if($user_from == 'sina') {
+			$token = oauth_open_parse_parameters($result->data);
+		}
+		if($user_from == 'renren') {
+			$token = json_decode($result->data);
+		}
+		if ($token) {
+			//	if ($token['oauth_token_secret']) {
+			unset($_SESSION['oauth_token']);
+			$tok = new stdClass;
+
+			// 访问令牌
+
+			if ($user_from=='sina') {
+				$tok->key = $token['oauth_token'];
+				$tok->secret = $token['oauth_token_secret'];
+				$tok->verifier = $values['oauth_verifier'];
+			}
+			if ($user_from=='renren') {
+				$tok->key = $token->access_token;
+			}
+			return $tok;
+		}
+	}
+}
+
+/**
+ * 执行一个 http 请求
+ */
+function oauth_set_request($user_from, $http_url, array $values = array(), array $headers = array(), $method = 'POST') {
+	if (!isset($headers['User-Agent'])) {
+		$headers['User-Agent'] = 'Sae T OAuth v0.2.0-beta2';
+	}
+
+	if (!isset($headers['Content-Type'])) {
+		$headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=utf-8';
+	}
+
+	$values['http_url'] = $http_url;
+	$values['http_method'] = $method;
+
+	if (!$request = oauth_get_request($values, $user_from)) {
+		return false;
+	}
+	
+	dd_http_request($request->http_url, $request->to_data, $method, $headers);
+}
+
+/**
+ * 编码数据
+ * @param (string or array) $input
+ */
+function oauth_urlencode_rfc3986($input) { 
+	if (is_array($input)) { 
+		return array_map('oauth_urlencode_rfc3986', $input); 
+	} else if (is_scalar($input)) { 
+		return str_replace( '+', ' ',  str_replace('%7E', '~', rawurlencode($input))); 
+	} else { 
+		return ''; 
+	} 
+}
+
+/**
+ * GET query 字符串解析为数组
+ * @param (string) $string
+ */
+function oauth_open_parse_parameters($string) { 
+	if (!isset($string) || !$string) return array(); 
+
+	$pairs = explode('&', $string); 
+
+	$param = array(); 
+	foreach ($pairs as $pair) { 
+		$split = explode('=', $pair, 2); 
+		$parameter = urldecode($split[0]); 
+		$value = isset($split[1]) ? urldecode($split[1]) : ''; 
+
+		if (isset($param[$parameter])) { 
+			if (is_scalar($param[$parameter])) { 
+				$param[$parameter] = array($param[$parameter]); 
+			} 
+			$param[$parameter][] = $value; 
+		} else { 
+			$param[$parameter] = $value; 
+		} 
+	} 
+	return $param; 
+}
+
+/**
+ * @brief get a request token by appid and appkey
+ *        rfc1738 urlencode
+ * @param $appid
+ * @param $appkey
+ *
+ * @return a string, the format as follow: 
+ *      oauth_token=xxx&oauth_token_secret=xxx
+ */
+function get_request_token($appid, $appkey)
+{
+	//获取request token接口, 不要随便更改!!
+	$url    = "http://openapi.qzone.qq.com/oauth/qzoneoauth_request_token?";
+	//构造签名串.源串:方法[GET|POST]&uri&参数按照字母升序排列
+	$sigstr = "GET"."&".rawurlencode("http://openapi.qzone.qq.com/oauth/qzoneoauth_request_token")."&";
+
+	//必要参数,不要随便更改!!
+	$params = array();
+	$params["oauth_version"]          = "1.0";
+	$params["oauth_signature_method"] = "HMAC-SHA1";
+	$params["oauth_timestamp"]        = time();
+	$params["oauth_nonce"]            = mt_rand();
+	$params["oauth_consumer_key"]     = $appid;
+
+	//对参数按照字母升序做序列化
+	$normalized_str = get_normalized_string($params);
+	$sigstr        .= rawurlencode($normalized_str);
+
+	//签名,需要确保php版本支持hash_hmac函数
+	$signature = base64_encode(hash_hmac("sha1", $sigstr, $appkey."&", true));
+	//构造请求url
+	$url      .= $normalized_str."&"."oauth_signature=".rawurlencode($signature);
+
+	return file_get_contents($url);
+}
+
+/**
+ * @brief get a access token 
+ *        rfc1738 urlencode
+ * @param $appid
+ * @param $appkey
+ * @param $request_token
+ * @param $request_token_secret
+ * @param $vericode
+ *
+ * @return a string, as follows:
+ *      oauth_token=xxx&oauth_token_secret=xxx&openid=xxx&oauth_signature=xxx&oauth_vericode=xxx&timestamp=xxx
+ */
+function get_access_token($appid, $appkey, $request_token, $request_token_secret, $vericode) {
+	//获取access token接口，不要随便更改!!
+	$url    = "http://openapi.qzone.qq.com/oauth/qzoneoauth_access_token?";
+	//构造签名串.源串:方法[GET|POST]&uri&参数按照字母升序排列
+	$sigstr = "GET"."&".rawurlencode("http://openapi.qzone.qq.com/oauth/qzoneoauth_access_token")."&";
+
+	//必要参数，不要随便更改!!
+	$params = array();
+	$params["oauth_version"]          = "1.0";
+	$params["oauth_signature_method"] = "HMAC-SHA1";
+	$params["oauth_timestamp"]        = time();
+	$params["oauth_nonce"]            = mt_rand();
+	$params["oauth_consumer_key"]     = $appid;
+	$params["oauth_token"]            = $request_token;
+	$params["oauth_vericode"]         = $vericode;
+
+	//对参数按照字母升序做序列化
+	$normalized_str = get_normalized_string($params);
+	$sigstr        .= rawurlencode($normalized_str);
+
+	//签名,确保php版本支持hash_hmac函数
+	$signature = base64_encode(hash_hmac("sha1", $sigstr, $appkey."&".$request_token_secret, true));
+	//构造请求url
+	$url      .= $normalized_str."&"."oauth_signature=".rawurlencode($signature);
+
+	return file_get_contents($url);
+}
+
+function oauth_module_core_module(){
+	return array('oauth');
+}
+
+function oauth_weibo_add($text, $url = NULL){
+	global $user;
+
+		$user_ext = db_query("SELECT ext_name,type,data FROM {user_ext} WHERE uid = ?", array($user->uid), array('return' => 'one'));
+		$tok = unserialize($user_ext->data);
+		if($user_ext->type == 'sina'){
+			$url = 'https://api.weibo.com/2/statuses/update.json';
+			$data .= 'status='.urlencode($text);
+			$data .= '&access_token='.$tok->access_token;
+		}elseif($user_ext->type == 'qq'){
+			$url = 'https://graph.qq.com/t/add_t';
+			
+			$data .= 'content='.urlencode($text);
+			$data .= '&clientip='.$_SERVER['REMOTE_ADDR'];
+			$data .= '&format=json';
+			$data .= '&oauth_consumer_key='.var_get_key('oauth', 'qq_oauth_consumer_key', false);
+			$data .= '&openid='.$user_ext->ext_name;
+			$data .= '&'.$tok;
+		}
+		$result = dd_http_request($url, $data, 'POST');
+}
+
+function fabu($text){
+	$ouser = db_query("SELECT data,ext_name FROM {user_ext} WHERE uid = ?", array($uid), array('return' => 'one'));
+	$tok = unserialize($ouser->data);
+	$tok = $tok->access_token;
+	$url = 'https://api.weibo.com/2/statuses/update.json';
+	$data = 'status='.$text.'&access_token='.$tok;
+	$res = dd_http_request($url, $data, 'POST');
+	if($res->status_message == 'OK'){
+		dd_set_message('微博发布成功');
+	}else{
+		dd_goto(oauth_login_url('sina'));
+	}
+}
+
+function get_user_weibo($cuid = 1642272037){
+	$ouser = db_query("SELECT data,ext_name FROM {user_ext} WHERE uid = ?", array($GLOBALS['user']->uid), array('return' => 'one'));
+	$tok = unserialize($ouser->data);
+	$tok = $tok->access_token;
+	$url = 'https://api.weibo.com/2/statuses/user_timeline.json';
+	$data = 'uid='.$cuid.'&access_token='.$tok;
+	$res = dd_http_request($url, $data, 'GET');
+	if($res->status_message == 'OK'){
+		return $res->data;
+	}else{
+		dd_goto(oauth_login_url('sina'));
+	}
+}
+
+function get_weibo_byid($id = NULL){
+	$ouser = db_query("SELECT data,ext_name FROM {user_ext} WHERE uid = ?", array($GLOBALS['user']->uid), array('return' => 'one'));
+	$tok = unserialize($ouser->data);
+	$tok = $tok->access_token;
+	$url = 'https://api.weibo.com/2/statuses/show.json?';
+	$data = 'id='.$id.'&access_token='.$tok;
+
+	$res = dd_http_request($url, $data, 'GET');
+	if($res->status_message == 'OK'){
+		return json_decode($res->data);
+	}else{
+		dd_goto(oauth_login_url('sina'));
+	}
+}
+
+function get_sina_user($uid, $suid = NULL, $sname = NULL){
+	$ouser = db_query("SELECT data,ext_name FROM {user_ext} WHERE uid = ?", array($uid), array('return' => 'one'));
+	$tok = unserialize($ouser->data);
+	$tok = $tok->access_token;
+	$url = 'https://api.weibo.com/2/users/show.json?';
+	if($suid != ''){
+		$data = 'uid='.$suid.'&access_token='.$tok;
+	}else{
+		$data = 'screen_name='.$sname.'&access_token='.$tok;
+	}
+	$res = dd_http_request($url, $data, 'GET');
+	if($res->status_message == 'OK'){
+		return json_decode($res->data);
+	}else{
+		dd_goto(oauth_login_url('sina'));
+	}
+}
+

@@ -1,0 +1,8 @@
+/*$Id$*/
+tr.forum_admin_term_parent {
+	font-weight: bold;
+	background: #F7E895;
+}
+td.forum_admin_term_parent_name {
+	text-align: left;
+}

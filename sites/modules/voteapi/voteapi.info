@@ -1,0 +1,8 @@
+<?php
+// $Id$
+$info = array(
+  'name' => 'voteapi',
+  'description' => '为其它模块提供投票计数接口',
+  'ver' => '1.0',
+  'language' => 'zh-hans',
+);

@@ -1,0 +1,44 @@
+﻿body{padding:0px;margin:0px; background:#e2e2e2; font-size:12px; color:#a4bdcb; font-family:Arial,微软雅黑;}
+dl,dt,dd,ul,li,ol{padding:0px; margin:0px; letter-spacing:1px;}
+a{color:#999; text-decoration:none;}
+a:hover{color:#333;}
+.main_login{ background:url(bg.png) no-repeat center; height:362px; width:820px; margin:50px auto 0px auto; position:relative; font-family:"微软雅黑"}
+.loginmantis{position:absolute; top:320px; left:170px;width:189px; height:65px;  text-align:right; background:url(images/mantis.png) no-repeat;}
+.loginmantis:hover{position:absolute; top:320px; left:170px;  background:url(images/mantiss.png) no-repeat;}
+.loginecstore{position:absolute; top:320px; left:400px; width:189px; height:65px; text-align:right; background:url(images/logo_shopexecstore.png) no-repeat; }
+.loginecstore:hover{position:absolute; top:320px; left:400px; background:url(images/logo_shopexecstorer.png) no-repeat;}
+.loginwiki{position:absolute; top:390px; left:170px;width:189px; height:65px;  text-align:right; background:url(images/wiki.png) no-repeat;}
+.loginwiki:hover{position:absolute; top:390px; left:170px;width:189px; height:65px;  background:url(images/wikii.png) no-repeat;}
+
+.loginprm{position:absolute; top:390px; left:400px; width:189px; height:65px;  text-align:right; background:url(images/prm.png) no-repeat;}
+.loginprm:hover{position:absolute; top:390px; left:400px; width:189px; height:65px;  background:url(images/prmm.png) no-repeat;}
+
+.main_login .m_text{position:absolute; top:-11175px; left:320px; color:#01578e; font-size:14px; font-weight:bold; text-shadow:1px 1px 1px #fff; text-align:center;}
+.main_login h3{font-size:20px;}
+.main_login .m_form{position:absolute; top:160px; left:295px;color:#6c6c6c}
+.main_login .m_username{margin-bottom:8px;}
+.m_form span{display:inline-block; width:50px; ; text-shadow:1px 1px 1px #fff;}
+.m_input{border:1px solid #ccc; background:#fff; height:22px; padding:0px 5px; width:160px; color:#888;}
+.t1{font-size:8px;}
+.main_login .a_btn{position:absolute; width:50px; height:28px; cursor:pointer; left:85px; top:90px; background:none; border:none; color:#fff; font-weight:bold;}
+.enter{border:1px solid #009cff; background:#fff; box-shadow:2px 0px 10px #fff;-moz-box-shadow:2px 0px 10px #fff;-webkit-box-shadow:2px 0px 10px #fff;}
+
+.m_main{margin:10px auto 10px 197px; width:1000px; position:relative;}
+.m_nav {margin:15px 33px 10px -35px;height:30px; line-height:30px; background:#0c71e5;cursor:pointer;background:-webkit-linear-gradient(top, #008aff, #0055e3);
+background: -moz-linear-gradient(top, #008aff, #0055e3);color:#fff;border:1px solid #0055E3; border-radius:5px; -moz-border-radius:5px; -webkit-border-radius:5px; padding:0px 15px;}
+.m_nav a{color:#fff; font-weight:bold; padding:0px 20px; border-right:1px solid #00a8ff;}
+a.ah{border:none;}
+.m_nav a:hover{color:#ffee00;}
+
+.m_body{overflow:hidden; width:1028px; margin:5px 0 10px 150px;}
+.m_b{width:48%; float:left; overflow:hidden; background:#f8f8f8; box-shadow:2px 2px 6px #ccc; border-top-left-radius:7px; border-top-right-radius:7px; margin:0 0 10px 12px; border:1px #ccc solid; padding:0 0 5px 0px; height:220px;}
+.m_b h3{ height:24px; line-height:24px;background:#eee; background:-webkit-gradient(linear, 0 0, 0 bottom, from(#f4f4f4), to(#ddd)); background: -moz-linear-gradient(top, #f4f4f4, #ddd); padding:0 12px; color:#888; font-size:12px;margin:0px; color:#555;}
+.m_b h3 span{float:right;}
+.m_b h3 span a {background:#fff; border-radius:5px;-moz-border-radius:5px;-webkit-border-radius:5px; padding:0px 4px; font-weight:normal;}
+.m_b h3 span a:hover{background:#008aff; color:#fff;}
+.m_b li{line-height:22px; padding:0px 10px;}
+.a{background:#eaeaea;}
+.m_b a{color:#555;}
+.m_b a:hover{color:#008aff;}
+.memberinfo{position:absolute; width:400px; text-align:right; right:20px; top:10px; color:#888;}
+.memberinfo h4{font-weight:normal;}

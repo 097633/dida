@@ -1,0 +1,8 @@
+<?php
+// $Id: highcharts.info 2 2013-03-22 13:39:36Z east $
+$info = array(
+  'name' => 'High Charts',
+  'description' => 'highcharts.com 接口',
+  'ver' => '1.0',
+  'language' => 'zh-hans',
+);

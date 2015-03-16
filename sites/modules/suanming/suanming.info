@@ -1,0 +1,9 @@
+<?php
+// $Id$
+$info = array(
+  'name' => '算命',
+  'description' => '算命模块，创建一个算命类型',
+  'ver' => '1.0',
+  'language' => 'zh-hans',
+  'weight' => '-1',
+);

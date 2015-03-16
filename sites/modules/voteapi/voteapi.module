@@ -1,0 +1,446 @@
+<?php
+// $Id$
+
+/**
+ * @Implement of hook_menu()
+ */
+function voteapi_menu() {
+  $items = array();
+  /**
+   * 处理投票请求的地址
+   * arg(1)：模块名称
+   * arg(2)：投票类型
+   *  类型不能重复，最好加上模块名称为前缀，避免和其它模块的命名冲突。若冲突，将导致投票、计数结果完全错误
+   * 以上两个参数将决定调用哪些函数来完成请求，如：voteapi/user/vote，将执行以下操作：
+   * 调用 user_voteapi_setting('vote')，读取投票基本设置
+   * 调用  user_voteapi_access('vote')，验证投票权限，返回 true，则有权投票
+   * 必须通过 get 传递以下值：
+   * value：投票值，只能是整型。可以在 hook_voteapi_settting() 中设置允许的值
+   * nid：节点 id，只能是正整数
+   */
+  $items['voteapi/%/%'] = array(
+    'load_functions' => array(1 => '%', 2 => '%'),
+    'access_callback' => true,
+    'page_callback' => '_voteapi_exec',
+    'page_arguments' => array(1, 2),
+  );
+	$items['voteapi/delete/%'] = array(
+    'access_callback' => true,
+    'page_callback' => 'voteapi_info_delete',
+    'page_arguments' => array(2),
+  );
+
+  return $items;
+}
+
+/**
+ * voteapi 记录每个节点的投票统计，tags 字段为类型标识，包括三种基本类型：
+ * sum：节点总分（所有值相加）
+ * count：节点总投票次数
+ * average：节点平均分，总分/总次
+ * 基本类型默认启用，在配置中可设置禁用。如投票只有一个值，即 +1，只需要统计总人数即可
+ * 扩展统计类型，即根据投票值统计：
+ * 假如是五星投票，投票值即为：1、2、3、4、5，扩展统计类型将记录各值总人数，标识即为投票值
+ * 扩展统计默认禁用，在配置中设置启用
+ * 总值保留 2 位小数
+ * 每次投票请求处理成功后，将返回以上统计，也可通过 voteapi_get_data() 获取
+ */
+
+/**
+ * 处理投票请求地址
+ * @param (string) $module
+ *  模块名称
+ * @param (string) $type
+ *  投票类型
+ * @param (array) $v
+ *  直接调用此函数完成投票，必须传递 $v['value']、$v['nid]
+ * @param (array) $error
+ *  错误提示
+ * @param (bool) $page
+ *  来自于 url(voteapi/%/%) 的投票请求 
+ * @return 失败返回 false，成功返回一个对象，包含当前节点得票统计
+ */
+function voteapi_exec($module, $type, array $v, &$error = NULL, $page = NULL) {
+  $vote = new stdClass();
+  
+  if ($v['value'] && $v['nid']) {
+    $vote->value = $v['value'];
+    $vote->nid = $v['nid'];
+  } else {
+    $error->code = -1;
+    $error->text = t('voteapi', 'value 和  nid 不存在');
+    return false;
+  }
+  
+  global $user, $conf;
+  
+  $vote->type = $type;
+  
+  if (!$conf['modules'][$module]) {
+    $error->code = -2;
+    $error->text = t('voteapi', '模块不存在');
+    return false;
+  }
+  
+  if (!is_numeric($vote->value) || !is_numeric($vote->nid)) {
+    $error->code = -3;
+    $error->text = t('voteapi', 'value 和 nid 只能是数字');
+    return false;
+  }
+  
+  // 调用类型配置函数
+  $func_setting = $module.'_voteapi_setting';
+  if (function_exists($func_setting)) {
+    $setting = $func_setting($type, $vote);
+  }
+ 
+  if (!isset($setting)) {
+    $error->code = -4;
+    $error->text = t('voteapi', '模块没有定义这个投票类型');
+    return false;
+  }
+  
+  if ($page && $setting['not_page']) {
+    $error->code = -13;
+    $error->text = t('voteapi', '不允许通过页面接口投票');
+    return false;
+  }
+  
+  /**
+   * 基本权限验证：只允许登录用户投票
+   * 赋值类型 bool，如： array('is_login' => true)
+   */
+  if ($setting['is_login'] && !$user->uid) {
+    $error->code = -11;
+    $error->text = t('voteapi', '只有登录用户才能投票');
+    return false;
+  }
+  
+  /**
+   * 基本权限验证：只允许特定用户组投票
+   * 赋值类型 array，如： array('is_roles' => array(3, 5)
+   * 验证当前用户所在用户组是否在允许范围
+   */
+  if ($setting['is_roles']) {
+    $true = false;
+    if ($user->roles) {
+      foreach ($setting['is_roles'] as $rid) {
+        if ($user->roles[$rid]) {
+          $true = true;
+          break;
+        }
+      }
+    }
+    if ($true == false) {
+      $error->code = -12;
+      $error->text = t('voteapi', '没有权限投票');
+      return false;
+    }
+  }
+  
+  /**
+   * 检查 $vote->value 是否被允许
+   * 假如设置为：array(1, -1)，则表示只允许 1 和 -1
+   */
+  if ($setting['is_value'] && !in_array($vote->value, $setting['is_value'])) {
+    $error->code = -5;
+    $error->text = t('voteapi', '非法的投票参数');
+    return false;
+  }
+
+  /**
+   *@Operating 设置只能投票一次
+   */
+  if($setting['is_only']){
+		if($user->uid == 0 && $settings['is_login'] != 1){
+			
+		}else{
+			$iid = db_query("SELECT iid FROM {voteapi_info} WHERE nid = ? AND type = ? AND uid = ?", array($v['nid'], $type, $user->uid), array('return' => 'column'));
+			if($iid){
+				$error->code = -6;
+				$error->text = t('voteapi', '已经存在该记录');
+				return false;
+			}
+		}
+	}
+  /**
+   * 调用权限验证函数，传递 $type、$vote
+   * 请返回 false 或 true，false 则表示没有权限
+   * 除非有更细致的权限控制需求，一般不需定义，基本权限验证可在 hook_voteapi_setting() 中完成
+   */
+  $func_access = $module.'_voteapi_access';
+  if (function_exists($func_access)) {
+    if ($func_access($type, $vote) == false) {
+      $error->code = -12;
+      $error->text = t('voteapi', '没有权限投票');
+      return false;
+    }
+  }
+  
+  $vote->host = ip_address();
+  
+	$iid = db_query("SELECT iid FROM {voteapi_info} WHERE nid = ? AND type = ? AND host = ?", array($v['nid'], $type, $vote->host), array('return' => 'column'));
+	if($iid){
+		$error->code = -6;
+		$error->text = t('voteapi', '已经存在此ip的记录');
+		return false;
+	}
+  // 增加投票
+  if (!$v['iid']) {
+  
+    /**
+     * 检查投票时间限制
+     * 以小时为单位，若设置为 1，表示每小时可投一票，设置为 2，2 小时可投一票。0 为不限制
+     */
+    if ($setting['is_time'] && is_numeric($setting['is_time'])) {
+      $time = $_SERVER['REQUEST_TIME']-$setting['is_time']*3600;
+      
+      if ($user->uid) {
+        // 登录用户以 uid 判断
+        if (db_query('SELECT COUNT(iid) FROM {voteapi_info} WHERE nid = ? AND uid = ? AND type = ? AND timestamp > ?',
+        array($vote->nid, $user->uid, $type, $time), array('return' => 'column'))) {
+          $error->code = -6;
+          $error->text = t('voteapi', '每 !string 小时只能投票一次', array('!string' => $setting['is_time']));
+          return false;
+        }
+      } else {
+        // 未登录用户以 ip 判断，暂不考虑 session
+        if (db_query('SELECT COUNT(iid) FROM {voteapi_info} WHERE host = ? AND type = ? AND timestamp > ?',
+        array($vote->host, $type, $time), array('return' => 'column'))) {
+          $error->code = -6;
+          $error->text = t('voteapi', '每 !string 小时只能投票一次', array('!string' => $setting['is_time']));
+          return false;
+        }
+      }
+    }
+    $vote->timestamp = $_SERVER['REQUEST_TIME'];
+    $vote->uid = $user->uid;
+    
+    if ($v['ext_id']) {
+      $vote->ext_id = $v['ext_id'];
+    }
+    
+  } else {
+    // 修改投票不验证时间限制
+    $vote->iid = $v['iid'];
+  }
+  
+  if (db_write_record('voteapi_info', $vote, $args)) {
+    // 若 later_statistics 为 true，则不调用统计，由模块自行处理
+    if (!$setting['later_statistics']) {
+      $vote->statistics = voteapi_update_statistics($type, $vote->nid, $setting);
+    }
+    
+    // 成功后调用的函数
+    if ($setting['call_success'] && function_exists($setting['call_success'])) {
+      $setting['call_success']($type, $vote);
+    }
+    
+    $vote->code = $error->code = 0;
+    
+    return $vote;
+  }
+  
+  // 失败后调用的函数
+  if ($setting['call_failure'] && function_exists($setting['call_failure'])) {
+    $setting['call_failure']($type, $vote);
+  }
+}
+
+/**
+ * 删除投票
+ * @param (int) $iid
+ *  voteapi_info.iid
+ * @param (bool) $statistics
+ *  是否更新统计
+ */
+function voteapi_info_delete($iid, $statistics = 1) {
+  if ($statistics) {
+    if ($o = db_query('SELECT nid, type FROM {voteapi_info} WHERE iid = ?', array($iid), array('return' => 'one'))) {
+      if (db_exec('DELETE FROM {voteapi_info} WHERE iid = ?', array($iid))) {
+        voteapi_update_statistics($o->type, $o->nid, array('statistics' => 1));
+        echo 1;
+				exit();
+      }
+    }
+  } else {
+    return db_exec('DELETE FROM {voteapi_info} WHERE iid = ?', array($iid));
+  }
+  
+}
+
+/**
+ * 清空投票明细，若删除整个节点或类型的明细，同时删除 voteapi 表中的统计
+ * @param (string) $type
+ *  自定义类型，必需
+ * @param (int) $nid
+ *  节点 id
+ * @param (int) $ext_id
+ *  扩展 id
+ */
+function voteapi_info_empty($type, $nid = NULL, $ext_id = NULL, $statistics = 1) {
+  if ($ext_id && $nid) {
+    if (db_exec('DELETE FROM {voteapi_info} WHERE type = ? AND nid = ? AND exit_id = ?',
+    array($type, $nid, $ext_id))) {
+      if ($statistics && $setting = zy_voteapi_setting($type)) {
+        voteapi_update_statistics($type, $nid, $setting);
+      }
+      return true;
+    }
+  } else if ($nid) {
+    if (db_exec('DELETE FROM {voteapi_info} WHERE type = ? AND nid = ?', array($type, $nid))) {
+      db_exec('DELETE FROM {voteapi} WHERE type = ? AND nid = ?', array($type, $nid));
+      return true;
+    }
+  } else if (db_exec('DELETE FROM {voteapi_info} WHERE type = ?', array($type))) {
+      db_exec('DELETE FROM {voteapi} WHERE type = ? AND nid = ?', array($type, $nid));
+      return true;
+  }
+}
+
+/**
+ * 节点投票统计
+ * @param (string) $type
+ *  投票自定义类型
+ * @param (int) $nid
+ *  节点 id
+ * @param (array) $settings
+ *  设置
+ */
+function voteapi_update_statistics($type, $nid, array $setting) {
+  // 统计
+  $statistics_types = false;
+  if (isset($setting['statistics'])) {
+    if (is_array($setting['statistics'])) {
+      $fetch = db_query('SELECT SUM(value) AS s, COUNT(iid) AS c, AVG(value) AS a FROM {voteapi_info} 
+      WHERE nid = ? AND type = ?', array($nid, $type), array('return' => 'one'));
+      $statistics_types = $setting['statistics'];
+    }
+  } else {
+    $statistics_types = array('sum', 'average', 'count');
+    $fetch = db_query('SELECT SUM(value) AS s, COUNT(iid) AS c, AVG(value) AS a FROM {voteapi_info} 
+    WHERE nid = ? AND type = ?', array($nid, $type), array('return' => 'one'));
+  }
+  
+  $count = array(
+    'count' => 0, 'sum' => 0, 'average' => 0
+  );
+  
+  if ($statistics_types && $fetch) {
+    foreach ($statistics_types as $key) {
+      if ($key == 'count') {
+        $count['count'] = voteapi_set_statistics($type, $nid, 'count', $fetch->c);
+      } else if ($key == 'sum') {
+        $count['sum'] = voteapi_set_statistics($type, $nid, 'sum', $fetch->s);
+      } else if ($key == 'average') {
+        $count['average'] = voteapi_set_statistics($type, $nid, 'average', $fetch->a);
+      }
+    }
+  }
+  
+  /**
+   * 统计单项值的总投票次数
+   * 若未提供允许值(is_value)列表，不统计
+   */
+  if ($setting['ext_statistics'] && $setting['is_value']) {
+    if ($fetch = db_query('SELECT COUNT(value) AS c, value FROM {voteapi_info} WHERE type = ? GROUP BY value',
+    array($type))) {
+      foreach ($fetch as $o) {
+        $count[$o->value] = voteapi_set_statistics($type, $nid, $o->value, $o->c);
+      }
+    }
+  }
+  
+  return $count;
+}
+
+/**
+ * 写入统计
+ * @param (string) $type
+ *  投票类型
+ * @param (string) $tags
+ *  统计类型
+ * @param (int) $nid
+ *  节点 id
+ * @param (float) $value
+ *  值，保留两位小数
+ */
+function voteapi_set_statistics($type, $nid, $tags, $value) {
+  static $data;
+  if (!isset($data[$type])) {
+    $data[$type] = array($nid => array());
+    if ($fetch = db_query('SELECT vid, nid, tags FROM {voteapi} WHERE type = ?', array($type))) {
+      foreach ($fetch as $o) {
+        $data[$type][$o->nid][$o->tags] = $o->vid;
+      }
+    }
+  }
+  
+  if ($data[$type][$nid][$tags]) {
+    // 更新
+    if (db_exec('UPDATE {voteapi} SET value = ?, timestamp = ? WHERE vid = ?',
+    array($value, $_SERVER['REQUEST_TIME'], $data[$type][$nid][$tags]))) {
+      return $value;
+    }
+    
+  } else if (db_exec('INSERT INTO {voteapi} (nid, type, tags, value, timestamp) VALUES (?, ?, ?, ?, ?)',
+  array($nid, $type, $tags, $value, $_SERVER['REQUEST_TIME']))) {
+    // 插入
+    $data[$type][$nid][$tags] = db_last_insert_id();
+    
+    return $value;
+  }
+}
+
+/**
+ * 获取节点投票统计
+ * @param (string) $type
+ *  投票类型
+ * @param (string) $tags
+ *  统计类型
+ * @param (int) $nid
+ *  节点 id
+ */
+function voteapi_get_statistics($type, $nid, $tags = NULL) {
+  static $data;
+  
+  if (!isset($data[$type][$nid])) {
+    $data[$type][$nid] = array();
+    if ($fetch = db_query('SELECT * FROM {voteapi} WHERE nid = ? AND type = ?', 
+      array($nid, $type))) {
+      foreach ($fetch as $o) {
+        $data[$type][$nid][$o->tags] = $o;
+      }
+    }
+    
+  }
+  
+  if (is_null($tags)) {
+    return $data[$type][$nid];
+  } else {
+    return $data[$type][$nid][$tags];
+  }
+}
+
+function _voteapi_exec($module, $type) {
+  $error = NULL;
+  if($_GET['value'] == '0'){
+		db_query("DELETE FROM {voteapi_info} WHERE nid = ? AND uid = ?", array($_GET['nid'], $GLOBALS['user']->uid));
+		$s = voteapi_update_statistics($type, $vote->nid, $setting);
+  }else{
+	  if ($_GET['value'] && $_GET['nid']) {
+			if ($vote = voteapi_exec($module, $type, array('value' => $_GET['value'], 'nid' => $_GET['nid']), $error, 1)) {
+				echo json_encode($vote);
+				exit;
+			}
+	  }
+  }
+  
+  if (!$error) {
+    echo '{"error": 1, "text": "ERROR!"}';
+  } else {
+    echo json_encode($error);
+  }
+  
+  exit;
+}

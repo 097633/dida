@@ -1,0 +1,146 @@
+<?php
+// $Id$
+
+/**
+ * @Implement of hook_schema()
+ *  定义模块安装时需要创建的数据表
+ */
+function suanming_schema() {
+  $schema['suanming'] = array(
+    'description' => '算命结果表',
+    'fields' => array(
+      'nid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => '主键，自增型'
+      ),
+      'sid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => '算命内容',
+      ),
+			'type' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => '抽签1，运势2，测字3',
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '作者 id',
+      ),
+      'created' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '创建时间',
+      ),
+    ),
+    'indexes' => array( // 根据情况定义索引
+      'uid' => array('uid'),
+    ),
+    'primary key' => array('nid'), // 主键
+  );
+  $schema['suanming_neirong'] = array(
+    'description' => '',
+    'fields' => array(
+      'nid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => '主键，自增型'
+      ),
+      'title' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '歇语',
+      ),
+      'jixiong' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '吉凶',
+      ),
+			'fenlei' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '分类',
+      ),
+      'body' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+        'description' => '正文'
+      ),
+      'description' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'medium',
+        'description' => '描述'
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '作者 id',
+      ),
+      'created' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '发表时间',
+      ),
+    ),
+    'indexes' => array( // 根据情况定义索引
+      'uid' => array('uid'),
+    ),
+    'primary key' => array('nid'), // 主键
+  );
+
+  return $schema;
+}
+
+/**
+ * @Implement of hook_install()
+ *  模块安装时执行的操作
+ */
+function suanming_install() {
+  $ret = array();
+  $ret = module_install_schema('install', 'suanming'); // 安装数据表
+  /**
+   * 在这儿可以执行其它操作，包括数据库增删查。
+   */
+  return $ret;
+}
+
+/**
+ * @Implement of hook_uninstall()
+ *  模块卸载时执行的操作
+ */
+function suanming_uninstall() {
+  $ret = array();
+  $ret = module_install_schema('uninstall', 'suanming'); // 删除创建的数据表
+  
+  // 其它操作，必须删除由模块创建的算命、图片等
+  
+  // 删除模块写入的配置信息，如果没有可以不要
+  db_exec('DELETE FROM {variable} WHERE name LIKE ?', array('suanming_%')); 
+  var_init(); // 刷新站点配置文件
+  
+  return $ret;
+}

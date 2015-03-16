@@ -1,0 +1,9 @@
+<?php
+// $Id$
+$info = array(
+  'name' => 'one',
+  'description' => '单页面模块，创建一个单页面类型',
+  'ver' => '1.0',
+  'language' => 'zh-hans',
+  'weight' => '-1',
+);

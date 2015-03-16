@@ -1,0 +1,455 @@
+<?php
+// $Id$
+
+/**
+ * @file 模块主文件，当模块启用后，系统初始化将载入此文件
+ */
+
+/**
+ * @Implement of hook_menu()
+ * 定义路径
+ */
+function one_menu(){
+  $items = array();
+  $items['one/%'] = array(
+    'load_functions' => array(1 => array('one_load')),
+    'access_callback' => TRUE, // 浏览权限
+    'page_callback' => 'one_page',
+    'page_arguments' => array(1),
+    //'file' => 'one.page.inc',
+  );
+	$items['one'] = array(
+	  'title' => '单页面',
+	  'access_callback' => TRUE, // 浏览权限
+	  'page_callback' => 'one_front',
+	  'page_arguments' => array(''),
+	); 
+  $items['admin/one/fields'] = array(
+    'title' => '字段管理',
+    'access_arguments' => array('admin one fields'),
+    'page_callback' => 'one_admin_fields',
+    'file' => 'one.admin.inc',
+  );
+	$items['one/add'] = array(
+    'title' => '发表单页面',
+    'access_arguments' => array('one add'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('one_node_form'),
+    'file' => 'one.form.inc',
+  );
+  $items['admin/one/add'] = array(
+    'title' => '发表单页面',
+    'access_arguments' => array('one add'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('one_node_form'),
+    'file' => 'one.form.inc',
+  );
+  $items['admin/one/%/edit'] = array(
+    'title' => '编辑单页面',
+  	'load_functions' => array(2 => array('one_load')),
+    'access_arguments' => array('admin one list'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('one_node_form', 2),
+    'file' => 'one.form.inc',
+  );
+  $items['one/%/delete'] = array(
+    'title' => '删除单页面',
+		'load_functions' => array(1 => array('one_load')),
+    'access_arguments' => array('admin one list'),
+    'page_callback' => 'one_delete', // 回调表单
+    'page_arguments' => array(1),
+  );
+  $items['admin/one'] = array(
+    'title' => '管理单页面',
+    'access_arguments' => array('admin one list'),
+    'page_callback' => 'one_admin_page',
+    'file' => 'one.admin.inc',
+  );
+  $items['admin/one/duoxuan'] = array(
+    'title' => '多选',
+    'access_arguments' => array('admin one list'),
+    'page_callback' => 'one_admin_duoxuan',
+    'file' => 'one.admin.inc',
+  );
+  return $items;
+}
+
+function one_front(){
+	dd_set_breadcrumb(array(l('单页面展示','one')));
+	$data = article_category_list('', 'one');
+
+	return theme('onefront', $data);
+}
+
+function one_page($one){
+	dd_set_title(array($one->title));
+	dd_set_html_head('<meta name="keywords" content="'.$one->keywords.'" />');
+	dd_set_html_head('<meta name="description" content="'.$one->description.'" />');
+	
+	if($one->fields['lanmu']->tid != ''){
+	$bread = field_term_breadcrumb($one->fields['lanmu']->tid);
+		foreach($bread as $val){
+			$str .= l($val->name,'category/'.$val->tid).' › ';
+		}
+	}
+	dd_set_breadcrumb(array($str.l($one->title, $one->url)));
+	return theme('one', $one);
+}
+/**
+ * @Implement of hook_site_menu()
+*/ 
+function one_site_menu(&$menu) {
+	//$menu['one']['#data'] = l('单页面展示', 'one');
+	//$menu['one']['#weight'] = 0;
+	//$menu['one']['#childrens'] = one_sub_menu();
+}
+/*
+获取栏目子栏目当下拉菜单
+*/
+function one_sub_menu(){
+	$subterms = get_term_byvname('lanmu', 'one');
+	foreach($subterms as $m){
+		$link[] = l($m->name,'category/'.$m->tid);
+	}
+
+	return $link;
+}
+/**
+ * @Implement of hook_prem()
+ *  向系统注册权限
+ */
+function one_perm(){
+  /**
+   * if(user_access('one add')){ // 这样来判断当前用户是否有该权限 }
+   * 多语言字符串 t() 函数，多了一个参数：t('模块名称', '字符串')
+   * 这是为了同一个词语在不同模块中可以有不同翻译
+   */
+  return array(
+    'one add' => t('one', '发表单页面'),
+    'admin one list' => t('one', '管理单页面'),
+    'admin one fields' => t('one', '管理字段')
+  );
+}
+
+/**
+ * @Implement of hook_system_admin_menus()
+ * 向系统注册管理菜单
+ */
+function one_system_admin_menus(){
+  return array(array(
+    array(t('one', '发表单页面'), 'admin/one/add'),
+    array(t('one', '单页面管理'), 'admin/one'),
+    array(t('one', '单页面字段'), 'admin/one/fields'),
+  ), t('one', '单页面模块'));
+}
+
+/**
+ * @Implement of hook_theme()
+ * 定义 theme
+*/ 
+function one_theme(){
+  return array(
+    'one' => array(
+      'tpl' => 'node.tpl.php', // 加载的 tpl.php，必须放在模块的 tpl 文件夹内。如复制一份到主题文件夹，优先级比模块文件夹中高
+      'args' => array('one'), // 传递到 tpl.php 中的变量
+    ),
+		'onefront' => array(
+			'tpl' => 'category.tpl.php',
+			'args' => array('data'),
+		),
+  );
+}
+
+/**
+ * @Implement of hook_field_call_group()
+ * 注册一个 field 组，一个模块可以注册多个 field 组
+ */
+function one_field_call_group($type = NULL){
+  $groups = array(
+    'my_field' => array(
+      'title' => t('one', '单页面字段'),
+      'sum' => 0,
+      'level' => 0,
+    )
+  );
+  return $type ? $groups[$type] : $groups;
+}
+
+/**
+ * 载入单页面
+ */
+function one_load($nid){
+  /**
+   * 数据库连接使用 PDO，类似于 drupal 7
+   */
+	if($one = db_query('SELECT n.*, f.filepath as litpic, u.uid, u.name FROM {one} n INNER JOIN {users} u ON n.uid = u.uid LEFT JOIN {files} f ON n.fid = f.fid WHERE n.nid = ?', array($nid), array('return' => 'one'))){
+		field_get_node_load('one', 'my_field', $one);             // 加载这篇 单页面下的自定义字段
+		$next = db_query('SELECT title,nid FROM {one} WHERE nid < ? ORDER BY nid DESC', array($nid), array('return' => 'one'));
+    if($next){
+      $one->next_link = l($next->title, 'one/'.$next->nid);        //上一篇链接
+    }
+    $prev = db_query('SELECT title,nid FROM {one} WHERE nid > ? ORDER BY nid ASC', array($nid), array('return' => 'one'));
+    if($prev){
+      $one->prev_link = l($prev->title, 'one/'.$prev->nid);        //下一篇链接
+    }
+		$one->url = url('one/'.$nid);
+	}
+	
+	return $one;
+}
+
+//hook_article_load
+function one_article_load($article){
+	$iid = db_query("SELECT iid FROM {mylike_info} WHERE nid = ? AND ext_id = ? AND type = ?", array($article->nid, 1, 'article'), array('return' => 'column'));
+	if($iid != ''){
+		$article->favourite = 1;
+	}
+	return $article;
+}
+/**
+ * 保存单页面
+ */
+ function one_save($v){
+  // 插入、更新 用db_exec()
+  global $user;
+  if(!$v['uid']){$v['uid'] = $user->uid;}
+	$v['timestamp'] = time();
+	$v['click'] = rand(100,500);
+
+	if($v['nid']){ // 更新
+		$args = array('nid');
+    if(db_write_record('one', $v, $args)){
+			$value = (object) $v;
+			field_get_node_save('one', 'my_field', $value, $one);
+		}
+  }else{
+		if(db_write_record('one', $v)){
+			$value = (object) $v;
+			if($value->nid = db_last_insert_id()){	
+				// 保存数据，字段数据将与 nid 相关联
+				field_get_node_save('one', 'my_field', $value, $one);
+			}
+		}
+		// 创建成功
+		// 保存字段数据，也必须是对象
+	}
+	one_set_ping($value);
+
+  module_invoke_all('one_save', $one);        
+	//module_invoke_all;
+    return $value;  
+}
+
+function one_delete($one){                                                  //删除单页面
+  if(db_exec('DELETE FROM {one} WHERE nid = ?', array($one->nid))){
+    field_get_node_delete('one','my_field',$one);             //删除单页面自定义字段
+		
+		dd_goto(dd_get_history());
+  }
+}
+
+function one_list($tid = NULL, $start = 0, $limit = 10, $titlelen = '20', $bodylen = '120', $flag = '', $allterm = 0, $term = 0, $litpic = 0, $module = 'one'){ 
+  //获取指定分类分类信息列表,没有$tid时按顺序取最后的几个节点
+	$args = array();
+	$where = ' n.nid>0 and ftn.tid>0';
+  if($tid){
+		if($allterm == 1){
+			$tids = get_allterm_bytid($tid);
+		}else{
+			$tids = array($tid);
+		}
+    //$args[] = $tids;
+    $where .= " and ftn.tid in (".implode(',',$tids).")";
+  }                 
+  if($flag){
+    $where .= ' and n.flag = ?';
+    $args[] = $flag;        
+  }
+	if($term == 1){
+		$re = ',ft.name,ft.tid';
+		$join .= ' INNER JOIN {fields_term} ft ON ftn.tid = ft.tid';
+	}
+	if($litpic == 1){
+		$re .= ',f.filepath';
+		$join .= ' LEFT JOIN {files} f ON n.fid = f.fid';
+	}
+	if(!$tid && !$term){
+		//echo 'SELECT * FROM {'.$module.'} ORDER BY nid DESC LIMIT 0';
+		$fetch = db_query('SELECT DISTINCT n.*'.$re.' FROM {'.$module.'} n '.$join.' ORDER BY n.nid DESC', array(), array('limit' => array($start,$limit)));
+	}else{
+		$fetch = db_query('SELECT DISTINCT n.*'.$re.' FROM {'.$module.'} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid '.$join.' WHERE '.$where.' ORDER BY n.nid DESC', $args, array('limit' => array($start,$limit)));
+	}
+	foreach($fetch as $key=>$one){
+    if(!$one->description && $one->body){
+      $one->description = mb_substr(strip_tags($one->body),0,$bodylen,'utf-8');
+    }
+		
+		$one->url = url($module.'/'.$one->nid);
+	}
+
+	return $fetch;
+}
+
+/**
+ * @Implement of hook_field_term_view()
+ * 默认栏目显示
+ */
+function one_field_term_view($term, $num = 10){
+	dd_set_breadcrumb(array(l('单页面展示','one'),l($term->name,'category/'.$term->tid)));
+	$where = ' n.nid > 0';
+	$tids = get_allterm_bytid($term->tid);
+	$where .= " and ftn.tid in (".implode(',',$tids).")";
+
+  if($fetch = pager_query('SELECT n.*,f.filepath FROM {one} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid LEFT JOIN {files} f ON n.fid = f.fid WHERE '.$where.' ORDER BY n.nid DESC', $num, 0, NULL, array($term->tid))){
+    
+    if($GLOBALS['conf']['one_rss_node']){
+      dd_set_html_head('<link rel="alternate" type="application/rss+xml" title="'.t('one', '订阅最新新闻').'" href="'.url('category/'.$term->tid.'/feed').'" />');
+    }
+		foreach($fetch as $o){
+			$items[] .= '<a href="/one/'.$o->nid.'"><img src="'.get_litpic($o,$size='200x150').'" title="'.$o->title.'"/></a><h3><a href="'.url('one/'.$o->nid).'">'.$o->title.'</a></h3>';
+		}
+
+    $output = theme('item_list', $items, NULL, 'ul', array('id' => 'one_term_list'));
+    $output .= pager_view();
+  }else{
+    $output = system_no_content();
+  }
+  return $output;
+}
+
+/**
+ * @Implement of hook_call_custom()
+ */
+function one_call_custom($v){
+  global $conf, $base_url;
+  switch($v['op']){
+    case 'feed':
+      require dd_get_path('module', 'one') . '/one.feed.inc';
+      
+      if($_GET['type'] == 'node'){
+        dd_set_header('Content-Type: application/xml; charset=utf-8');
+          /**
+           * 默认：获取全站最新单页面
+           * $_GET['uid']：用户 id，获取该用户最新单页面
+           */
+          echo one_get_feed_node($uid = NULL,$tid = $_GET['tid']);
+      }else{
+        echo 'byebye';
+      }
+    break;
+  }
+  exit;
+}
+
+/**
+* hook_cron
+*/
+function one_cron(){
+  
+}
+
+/**
+ * 发送 ping百度等
+ */
+function one_set_ping($node){
+  global $conf, $base_url;
+  
+  $data['params'] = array(
+    $conf['site_global']['name'], // 网站名称
+    $base_url, // 网站首页
+    url('one/'.$node->nid, array('absolute' => false)),
+  );
+  
+  return dd_set_ping($data);
+}
+
+/**
+ * @Implement of hook_block_list()
+
+function one_block_list($theme) {
+  return array(
+    'one_list' => array(
+        'title' => '单页面列表区块',
+        'visibility' => 1,
+        'weight' => -30
+      ),
+    );
+}
+ */
+/**
+ * @Implement of hook_block_view()
+
+function one_block_view($theme, $config = object) {
+	$data = one_list('', 0, 3, 20, 40, '', '', 0, 1);
+	foreach($data as $val){
+		$content .= '<li class="one_list"><div><a href="'.$val->url.'"><img src="'.get_litpic($val,$size='200x150').'" title="'.$val->title.'"/></a></div><div><a href="'.$val->url.'">'.$val->title.'</a></div></li>';
+	}
+	if($config->delta == 'one_list'){
+		
+	}elseif($config->delta == 'one_list'){
+		
+	}
+  return array(
+		'title' => '单页面列表',
+		'content' => $content
+	);
+} */
+
+/**
+ * @Implement of hook_comment_is_update()
+ */
+function one_comment_is_create($comment) {
+  if ($comment->ext_type == 'one') {
+    
+    return TRUE;
+    
+  }
+}
+/**
+ * 评论接口
+ **/
+function one_comment_info(){
+	return array(
+    'one' => array(
+			'name' => '评论',  // 评论名称
+			'field_title' => false, // 启用标题，默认为 true
+			'user_anonymous' => false, // 允许匿名评论，默认为 false
+			/*'user_anonymous_mail' => true, // 匿名评论必须输入邮箱，默认为 true
+			'user_anonymous_username' => true, // 匿名评论必须输入昵称，默认为 true
+			'user_anonymous_site' => false, // 匿名评论必须输入主页，默认为 false
+			'field_title_required' => false, // 必须输入标题，默认为 false
+			'field_title_max' => 255, // 标题最大长度，不超过 255
+			'field_title_min' => 0, // 标题最小长度
+			'field_body_required' => true, // 必须输入评论内容，默认为 true
+			'field_body_max' => 50000, // 内容最大长度
+			'field_body_min' => 2, // 内容最小长度
+			'field_captcha_all' => false, // 针对所有人启用验证码，默认为 false
+			'field_captcha_anonymous' => true, // 针对匿名用户启用验证码，默认为 true
+			'captcha_image' => '55x16', // 图形验证码的宽高，若不使用图形验证码，赋值为 false
+			'captcha_type' => DIDA_CAPTCHA_TYPE_INT, // 验证码文本类型
+			'default_status' => 1, // 评论状态，默认为 0：未审核
+			*/
+			// 'editor_html' => 0, // 加载  html 编辑器
+			// 'editor_text' => 0, // 加载 文本编辑器
+			// 'default_format' => 0, // 输入格式，留空则使用默认
+			// 'from_update_call' => 'function', // 载入编辑表单时回调函数，如： test(&$form, &$comment) { }
+			// 'from_insert_call' => 'function', // 载入添加表单时回调函数，如： test(&$form) { }
+		)
+	);
+}
+
+/**
+ *
+ */
+function one_comment($one, $num = 10){
+	if ($data = comment_ext_view('one', $one->nid,  $num)) {
+		$output = $data->view;
+		$output .= $data->pager;
+  }
+	$comment = new stdClass;
+	$comment->ext_type = 'one';
+	$comment->ext_id = $one->nid;
+	$comment->title = t('one', '回答：!title', array('!title' => $one->title));
+	$output .= dd_get_form('comment_form',$comment);
+	return $output;
+}

@@ -1,0 +1,9 @@
+<?php
+// $Id: content.info 1 2013-01-31 17:27:45Z east $
+$info = array(
+  'name' => '内容',
+  'description' => '提供完善的内容管理功能',
+  'ver' => '1.0',
+  'dependencies' => array('comment'),
+  'language' => 'zh-hans',
+);

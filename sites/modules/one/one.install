@@ -1,0 +1,115 @@
+<?php
+// $Id$
+
+/**
+ * @Implement of hook_schema()
+ *  定义模块安装时需要创建的数据表
+ */
+function one_schema() {
+  $schema['one'] = array(
+    'description' => '',
+    'fields' => array(
+      'nid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => '主键，自增型'
+      ),
+      'title' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '标题',
+      ),
+      'fid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => '缩略图id',
+      ),
+      'flag' => array(
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '推荐位',
+      ),
+      'click' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => '0',
+        'description' => '点击数',
+      ),
+      'description' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'medium',
+        'description' => '描述'
+      ),
+      'body' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+        'description' => '正文'
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '作者 id',
+      ),
+      'format' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '输入格式',
+      ),
+      'timestamp' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '发表时间',
+      ),
+    ),
+    'indexes' => array( // 根据情况定义索引
+      'uid' => array('uid'),
+    ),
+    'primary key' => array('nid'), // 主键
+  );
+  return $schema;
+}
+
+/**
+ * @Implement of hook_install()
+ *  模块安装时执行的操作
+ */
+function one_install() {
+  $ret = array();
+  $ret = module_install_schema('install', 'one'); // 安装数据表
+  /**
+   * 在这儿可以执行其它操作，包括数据库增删查。
+   */
+  return $ret;
+}
+
+/**
+ * @Implement of hook_uninstall()
+ *  模块卸载时执行的操作
+ */
+function one_uninstall() {
+  $ret = array();
+  $ret = module_install_schema('uninstall', 'one'); // 删除创建的数据表
+  
+  // 其它操作，必须删除由模块创建的单页面、图片等
+  
+  // 删除模块写入的配置信息，如果没有可以不要
+  db_exec('DELETE FROM {variable} WHERE name LIKE ?', array('one_%')); 
+  var_init(); // 刷新站点配置文件
+  
+  return $ret;
+}

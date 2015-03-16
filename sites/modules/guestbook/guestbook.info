@@ -1,0 +1,9 @@
+<?php
+// $Id$
+$info = array(
+  'name' => 'guestbook',
+  'description' => '留言本模块',
+  'ver' => '1.0',
+  'dependencies' => array('comment'), // 依赖评论模块
+  'language' => 'zh-hans',
+);

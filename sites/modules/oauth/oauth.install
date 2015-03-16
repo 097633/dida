@@ -1,0 +1,77 @@
+<?php
+// $Id$
+
+/**
+ * Implementation of hook_schema().
+ */
+function oauth_schema() {
+  
+  $schema['oauth_user'] = array(
+    'description' => '绑定其他网站用户表',
+    'fields' => array(
+      'uid' => array(
+        'type' => 'int',
+        'description' => '关联 users 表',
+        'unsigned' => true,
+        'not null' => true,
+        'default' => 0,
+      ),
+      'oauth_uid' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '用户 id',
+      ),
+      'token' => array(
+        'type' => 'text',
+        'description' => '访问令牌等信息',
+        'not null' => true,
+        'serialize' => true,
+        'size' => 'medium'
+      ),
+      'timestamp' => array(
+        'type' => 'int',
+        'description' => '上次同步时间',
+        'unsigned' => true,
+        'not null' => true,
+        'default' => 0,
+      ),
+      'user_from' => array(
+        'type' => 'varchar',
+				'length' => 32,
+        'description' => '用户来源',
+        'not null' => true,
+        'default' => '',
+      ),
+    ),
+    'unique keys' => array(
+      'oauth_uid' => array('oauth_uid'),
+    ),
+    'primary key' => array('uid'),
+  );
+  
+  return $schema;
+}
+
+/**
+ * Implementation of hook_install().
+ */
+function oauth_install() {
+  $ret = array();
+  $ret = module_install_schema('install', 'oauth');
+  return $ret;
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function oauth_uninstall() {
+  $ret = array();
+  $ret = module_install_schema('uninstall', 'oauth');
+  
+  db_exec('DELETE FROM {variable} WHERE name LIKE ?', array('oauth%'));
+  var_init();
+  
+  return $ret;
+}

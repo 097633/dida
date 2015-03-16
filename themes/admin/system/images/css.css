@@ -1,0 +1,103 @@
+﻿@import url("border.css");
+@import url("widget.css");
+
+
+
+
+/*================================================
+@import url("blue/border.css");
+@import url("green/border.css");
+@import url("red/border.css");
+@import url("orange/border.css");
+@import url("purple/border.css");
+
+
+==================================================*/
+
+body { font-family:Verdana, Geneva, sans-serif; font-size:12px; margin:0;}
+a:hover { text-decoration:underline;}
+#Top, #AllWrap, #Search, #Foot{ width:98%; margin:0 auto;}
+
+#Top { position:relative; height:80px;z-index:11;}
+#Logo { position:absolute; margin:10px;}
+#TopLinks { float:right; padding:6px 0 0; color:#9f9f9f;}
+#TopLinks .login-bar, #TopLinks .top-links { display:inline; float:left; height:24px; line-height:24px;}
+
+
+
+#TopLinks .login-bar { margin-right:10px; float:left;position:relative;z-index:11111;}
+#TopLinks ul, #TopLinks .TreeList  { overflow:hidden; line-height:12px;}
+#TopLinks li, #TopLinks .TreeList div { display:inline; margin:0 0 0 -2px; padding:0 5px; border-left:1px solid #c8c8c8; }
+#TopNav { position:absolute; z-index:99; bottom:0; left:200px; background:url(top_nav.gif) no-repeat; height:30px; padding:0 0 0 8px; width:500px;}
+#TopNav .bg {
+
+/* background:url(top_nav.gif) no-repeat right 0; */
+ height:30px; padding:0 8px 0 0;}
+#TopNav ul { padding:10px 0 0;}
+#TopNav li { display:inline; margin:0 -2px 0 0; padding:0 7px; border-right:1px solid #c8c8c8; line-height:12px; }
+#TopNav .wgt-menu-more { border:none; background:#f7f7f7; margin-left:-5px; padding:0 2px; }
+#TopNav .wgt-menu-view-more { border:none; background:url(icon.gif) no-repeat; cursor:pointer; text-indent:-9999px; z-index:100; display:inline-block; display:-moz-inline-stack; position:static; *display:block; *position:absolute; top:11px; z-index:999; width:20px; height:15px;}
+#TopNav .v-m-page { padding:3px 17px; line-height:160%;}
+#TopFunc { position:absolute; right:0; bottom:5px; width:370px; height:20px; line-height:20px;}
+#TopFunc .login-bar { float:right; color:#9f9f9f;}
+#TopFunc a:hover { text-decoration:underline;}
+.login-bar a { color:#8c6173;}
+#TopFunc .cart-bar { float:right; width:190px; background:url(cart_bg.gif) no-repeat;}
+.cart-bar a { color:#9f9f9f;}
+
+#Nav { background:url(nav_bg.gif) repeat-x; height:70px;font-weight:bold;}
+#NavInner { width:950px; margin:0 auto; height:36px; overflow:hidden; font-size:14px;}
+#NavContent { float:left; width:720px; overflow:hidden;}
+#NavContent li, #NavContent .TreeList div { font-family:"微软雅黑", Tahoma, Geneva, sans-serif; background:url(nav_bg.gif) no-repeat right -70px; float:left; height:38px; padding:8px 23px 0 20px; *padding-top:10px; }
+#NavContent a { color:#f6eaeb; text-decoration:none;}
+#NavSide { float:right; position:relative; width:205px; padding-right:10px; background:url(nav_bg.gif) repeat-x 0 -140px; height:40px;}
+#NavSide a { float:right; background:url(icon.gif) no-repeat 60px -37px; line-height:38px; *line-height:42px; padding:0 30px 0 0; color:#d8c685; text-decoration:none;}
+#NavBrand { position:absolute; top:-1000px; left:50%; margin-left:-400px; width:800px; padding:20px; z-index:999; top:-1000px; background:#fff; border:2px solid #8F3543; visibility:hidden;}
+#NavCategory { position:absolute; top:-1000px; left:50%; margin-left:-350px; width:700px; padding:5px; z-index:999; top:-1000px; background:#fff; border:2px solid #8F3543; visibility:hidden;}
+
+#Search { background:url(search.gif) no-repeat; width:950px; height:35px; line-height:35px;}
+#SearchInner { float:left; width:420px;}
+.hot-keywords { float:right; width:275px; color:#5c5c5c;}
+.hot-keywords a { margin:0 5px 0 0; color:#5c5c5c;}
+.hot-line { float:right; width:230px; font-family:"Century Gothic", Century, "Microsoft YaHei", Arial, "Helvetica Neue"; color:#534c4c; font-size:16px;}
+.hot-line strong { font-size:24px; font-weight:normal; letter-spacing:-1px; vertical-align:middle;}
+
+#IndexSide { width:194px; float:left; overflow:hidden; margin-right:10px;}
+.category-tp { background:url(cat_bg.gif) no-repeat; width:190px; height:34px; overflow:hidden;}
+.category-tp h3 { color:#FFF; font-size:14px; font-weight:bold; text-align:center; margin:0; line-height:28px;}
+.category-tp span { color:#ffd98d; margin:0 0 0 15px; text-transform:uppercase;}
+.category-bd { background:url(cat_bg.gif) repeat-y -200px 0; padding:0 0 18px;}
+.category-bd h3 { margin:0 0 10px; padding:8px 0;}
+.category-ft { background:url(cat_bg.gif) no-repeat 0 bottom; overflow:hidden; width:194px; height:9px; font-size:0; margin:0 0 10px;}
+.side-content { width:190px; overflow:hidden;}
+
+#IndexMain { width:736px; float:left; overflow:hidden;}
+#IndexMainBrand { width:515px; float:left; padding:45px 0 0;}
+#IndexMainSide { background:url(index_mside.gif) no-repeat 0 bottom; float:right; width:200px; padding:5px 0 5px 7px; }
+.hot-spot { background:url(index_barea.gif) no-repeat; padding:0 0 0 5px; position:absolute; width:540px; height:45px; margin:-45px 0 0 -13px;}
+.hot-spot .bg { background:url(index_barea.gif) no-repeat right 0; padding:0 5px 0 0; height:45px;}
+.hot-spot-inner { padding:8px 0 0 10px;}
+
+.goods-col { background:url(goods_col_bg.gif) no-repeat; margin:0 0 5px;}
+.goods-col .span-6 { border-right:1px dotted #ccc; margin:10px 0 0; padding:0 6px;}
+.goods-col .last { border:none;}
+
+#Foot { margin:20px auto;}
+#FootContent { border-collapse:collapse;}
+#FootContent td { border:1px solid #dad4cc; padding:17px;}
+#FootContent .foot-contact { background:url(foot_contact.gif) no-repeat 20px 19px; padding:14px 20px 16px 125px;}
+#FootContent .foot-contact .hot-line { float:none; width:auto; font-weight:normal; font-family:"Microsoft YaHei", "华文黑体", "Helvetica Neue", Helvetica, Tahoma, Geneva; font-size:28px; color:#90593f; margin:0 0 8px;}
+#FootContent .foot-contact p { line-height:170%;}
+#FootLinks { border:1px solid #919191; border-left:none; border-right:none; margin:10px 0; text-align:center; padding:3px 0;}
+#FootLinks .TreeList .cat1 { display:inline; margin:0 5px;}
+
+/*===============================================
+				内页#InnerMain { width:737px; float:left; overflow:hidden;}
+===============================================*/
+#InnerSide { width:190px; float:left; margin-right:10px; overflow:hidden;}
+
+
+
+.clear { clear:both;}
+.GoodsCategoryWrap td{white-space:normal;}
+.goods-items .itemsWrap img{width:120px;height:140px;}

@@ -1,0 +1,253 @@
+<?php
+// $Id$
+
+/**
+ * @file 模块主文件，当模块启用后，系统初始化将载入此文件
+ */
+
+/**
+ * @Implement of hook_menu()
+ * 定义路径
+ */
+function link_menu(){
+  $items = array();
+	$items['link'] = array(
+    'title' => '友情链接',
+    'access_callback' => TRUE,
+    'page_callback' => 'link_front', // 回调表单
+  );
+  $items['admin/link/add'] = array(
+    'title' => '发表合作伙伴',
+    'access_arguments' => array('link add'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('link_node_form'),
+  );
+  $items['admin/link/%/edit'] = array(
+    'title' => '编辑合作伙伴',
+  	'load_functions' => array(2 => array('link_load')),
+    'access_arguments' => array('link edit'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('link_node_form', 2),
+  );
+  $items['link/%/delete'] = array(
+    'title' => '删除合作伙伴',
+    'access_arguments' => array('link edit'),
+    'page_callback' => 'link_delete', // 回调表单
+    'page_arguments' => array(1),
+  );
+  $items['admin/link'] = array(
+    'title' => '管理合作伙伴',
+    'access_arguments' => array('admin link list'),
+    'page_callback' => 'link_admin_page',
+    'file' => 'link.admin.inc',
+  );
+	$items['admin/link/fields'] = array(
+    'title' => '字段管理',
+    'access_arguments' => array('admin link fields'),
+    'page_callback' => 'link_admin_fields',
+    'file' => 'link.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * @Implement of hook_prem()
+ *  向系统注册权限
+ */
+function link_perm(){
+  /**
+   * if(user_access('link add')){ // 这样来判断当前用户是否有该权限 }
+   * 多语言字符串 t() 函数，多了一个参数：t('模块名称', '字符串')
+   * 这是为了同一个词语在不同模块中可以有不同翻译
+   */
+  return array(
+    'link add' => t('link', '发表合作伙伴'),
+    'admin link list' => t('link', '管理合作伙伴'),
+  );
+}
+
+/**
+ * @Implement of hook_system_admin_menus()
+ * 向系统注册管理菜单
+ */
+function link_system_admin_menus(){
+  return array(array(
+    array(t('link', '发表合作伙伴'), 'admin/link/add'),
+    array(t('link', '合作伙伴管理'), 'admin/link'),
+		array(t('link', '字段管理'), 'admin/link/fields'),
+  ), t('link', '合作伙伴模块'));
+}
+/**
+ * 合作伙伴详细内容
+ */
+function link_load($id){
+	$fetch = db_query('SELECT n.* FROM {link} n WHERE n.nid = ?', array($id), array('return' => 'one'));
+	if($fetch){
+		field_get_node_load('link', 'my_field', $fetch);
+	}
+	return $fetch;
+}
+/**
+ * 保存合作伙伴
+ */
+ function link_save($v){
+  // 插入、更新 用db_exec()
+
+	if($v['nid']){ // 更新
+		$args = array($v['title'], $v['url'], $v['weight'],time(),$v['nid']);
+    if(db_exec('UPDATE {link} SET title = ?, url = ?, weight = ?, created = ? WHERE nid = ?', $args)){
+			$value = (object) $v;
+			field_get_node_save('link', 'my_field', $value);
+		}
+  }else{
+		if(db_exec('INSERT INTO {link} (title, url, weight, created) VALUES (?, ?, ?, ?)',array($v['title'], $v['url'], $v['weight'], time()))){
+			$value = (object) $v;
+			if($value->nid = db_last_insert_id()){	
+				// 保存数据，字段数据将与 nid 相关联
+				field_get_node_save('link', 'my_field', $value);
+			}
+		}
+		// 创建成功
+		// 保存字段数据，也必须是对象
+	}
+
+    return $value;  
+}
+
+function link_delete($id){                                                  //删除合作伙伴
+  if(db_exec('DELETE FROM {link} WHERE nid = ?', array($id))){
+		
+		dd_goto(dd_get_history());
+  }
+}
+
+function link_list($tid = NULL, $start = 0, $limit = 10){ 
+  //获取指定分类分类信息列表,没有$tid时按顺序取最后的几个节点
+	$args = array();
+	$where = ' n.nid>0 and ftn.tid>0';
+  if($tid){
+		$tids = array($tid);
+    //$args[] = $tids;
+    $where .= " and ftn.tid in (".implode(',',$tids).")";
+  }                 
+	if(!$tid && !$term){
+		$fetch = db_query('SELECT DISTINCT n.nid FROM {link} n '.$join.' ORDER BY n.weight ASC', array(), array('limit' => array($start,$limit)));
+	}else{
+		$fetch = db_query('SELECT DISTINCT n.nid FROM {link} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid '.$join.' WHERE '.$where.' ORDER BY n.weight ASC', $args, array('limit' => array($start,$limit)));
+	}
+	foreach($fetch as $key=>$val){
+    $fetch[$key] = link_load($val->nid);
+	}
+
+	return $fetch;
+}
+
+
+
+function link_node_form($link = NULL){
+  $form['settings'] = array(
+    '#redirect' => url('admin/link'), // 提交成功后跳转地址
+  );
+  $form['fields']['nid'] = array(
+    '#type' => 'hidden',
+    '#default_value' => $link->nid,
+    '#constant' => 1
+  );  
+  $form['fields']['title'] = array(
+    '#title' => t('link', '标题'),
+    '#type' => 'textfield',
+    '#default_value' => $link->title,
+    '#required' => 1,
+    '#weight' => -10,
+    '#attributes' => array('size' => 20)
+  );
+  $form['fields']['url'] = array(
+    '#title' => t('url', 'u r l'),
+    '#type' => 'textfield',
+    '#default_value' => $link->url,
+    '#weight' => 0,
+    '#required' => 1,
+    '#attributes' => array('size' => 20)
+  );  
+  $form['fields']['weight'] = array(
+    '#title' => t('weight', '排序'),
+    '#type' => 'textfield',
+    '#default_value' => isset($link->weight) ? $link->weight : 0,
+    '#weight' => 0,
+    '#attributes' => array('size' => 10)
+  ); 
+	field_get_node_form('link', 'my_field', $link, $form, 0);
+  $form['fields']['submit'] = array(
+    '#type' => 'submit',
+    '#submit' => 'link_node_form_submit', // 提交时回调函数
+    '#weight' => 100
+  );
+  
+  return $form;
+}
+
+// 表单提交回调函数
+function link_node_form_submit($form, $v){
+  // 插入、更新 用db_exec()
+	link_save($v);
+}
+
+function link_search_form(){
+  $form['settings'] = array(
+    '#attributes' => array('class' => 'search_form') // 提交成功后跳转地址
+  );
+  $form['fields']['title'] = array(
+    '#title' => t('link', '标题'),
+    '#type' => 'textfield',
+    '#default_value' => $_GET['title'],
+    '#attributes' => array('size' => 10)
+  );
+  $form['fields']['url'] = array(
+    '#title' => t('url', 'url'),
+    '#type' => 'textfield',
+    '#default_value' => $_GET['url'],
+    '#attributes' => array('size' => 10)
+  );
+  $form['fields']['submit'] = array(
+    '#type' => 'submit',
+    '#submit' => 'link_search_form_submit', // 提交时回调函数
+    '#weight' => 100
+  );
+	return $form;
+}
+
+function link_search_form_submit(&$form,&$v){
+	dd_goto($_GET['q'], array('title' => $v['title'],'url' => $v['url']));
+}
+
+/**
+ * @Implement of hook_field_call_group()
+ * 注册一个 field 组，一个模块可以注册多个 field 组
+ */
+function link_field_call_group($type = NULL){
+  $groups = array(
+    'my_field' => array(
+      'title' => t('link', '单页面字段'),
+      'sum' => 0,
+      'level' => 0,
+    )
+  );
+  return $type ? $groups[$type] : $groups;
+}
+
+function link_front(){
+	return theme('linkfront');
+}
+
+/**
+ * @Implement of hook_theme()
+ * 定义 theme
+*/ 
+function link_theme(){
+  return array(
+		'linkfront' => array(
+			'tpl' => 'front.tpl.php',
+		),
+  );
+}

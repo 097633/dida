@@ -1,0 +1,350 @@
+<?php
+// $Id$
+
+/**
+ * @file 模块主文件，当模块启用后，系统初始化将载入此文件
+ */
+
+/**
+ * @Implement of hook_menu()
+ * 定义路径
+ */
+function guestbook_menu(){
+  $items = array();
+  $items['guestbook'] = array(
+    'title' => '留言页面',
+		'access_callback' => true,
+    'access_arguments' => array('guestbook add'),
+    'page_callback' => 'guestbook_front', // 回调表单
+    'page_arguments' => array(''),
+  );
+  $items['guestbook/add'] = array(
+    'title' => '发表留言',
+    'access_arguments' => array('guestbook add'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('guestbook_node_form'),
+  );
+  $items['admin/guestbook/%/edit'] = array(
+    'title' => '编辑留言',
+  	'load_functions' => array(2 => array('guestbook_load')),
+    'access_arguments' => array('admin guestbook list'),
+    'page_callback' => 'dd_get_form', // 回调表单
+    'page_arguments' => array('guestbook_node_form', 2)
+  );
+  $items['admin/guestbook/%/replay'] = array(
+    'title' => '回复留言',
+    'access_arguments' => array('admin guestbook list'),
+    'page_callback' => 'guestbook_replay', // 回调表单
+    'page_arguments' => array(''),
+  );
+  $items['guestbook/%/delete'] = array(
+    'title' => '删除留言',
+    'access_arguments' => array('admin guestbook list'),
+    'page_callback' => 'guestbook_delete', // 回调表单
+    'page_arguments' => array(1),
+  );
+  $items['admin/guestbook'] = array(
+    'title' => '管理留言',
+    'access_arguments' => array('admin guestbook list'),
+    'page_callback' => 'guestbook_admin_page',
+  );
+
+  return $items;
+}
+
+/**
+ *留言首页
+ */
+function guestbook_front(){
+	return theme('guestbook_front');
+}
+
+/**
+ * @Implement of hook_theme()
+ */
+function guestbook_theme() {
+  return array(
+    'guestbook_front' => array(
+      'tpl' => 'front.tpl.php',
+      'description' => '留言首页',
+    ),
+  );
+}
+
+/**
+ *留言菜单
+ 
+function guestbook_site_menu(&$menu){
+  $menu['guestbook']['#data'] = l(t('guestbook', '留言反馈'), 'guestbook');
+	$menu['guestbook']['#weight'] = -10;
+}
+*/
+/**
+ *留言回复页面
+ **/
+function guestbook_replay(){
+	$gid = arg(2);
+	$guestbook = guestbook_load($gid);
+	$output = '留言标题:'.$guestbook->title.'<hr>';
+	$output .= '留言内容:'.$guestbook->body.'<hr>';
+	$comments = db_query("SELECT cid,body FROM {comment} WHERE ext_id = ? and ext_type = ?",array($gid,'guestbook'));
+	if($comments){
+		foreach($comments as $val){
+			$output .= '<a href="/comment/delete/'.$val->cid.'" class="confirm">删除</a>回复内容:'.$val->body.'<hr>';
+		}
+	}
+	$comment = new stdClass;
+	$comment->ext_type = 'guestbook';
+	$comment->ext_id = $gid;
+	//$comment->title = t('guestbook', '回复：!title', array('!title' => $node->title));
+	$output .= dd_get_form('comment_form',$comment);
+
+	return $output;
+}
+/**
+ * @Implement of hook_comment_is_delete()
+ */
+function guestbook_comment_is_delete($comment) {
+  if ($comment->ext_type == 'guestbook') {
+    if (user_access('admin guestbook list')) {
+			$comment->redirect = 'admin/guestbook/'.$comment->ext_id.'/replay';
+      return TRUE;
+    }else{
+			return false;
+		}
+  }
+}
+/**
+ * @Implement of hook_prem()
+ *  向系统注册权限
+ */
+function guestbook_perm(){
+  /**
+   * if(user_access('guestbook add')){ // 这样来判断当前用户是否有该权限 }
+   * 多语言字符串 t() 函数，多了一个参数：t('模块名称', '字符串')
+   * 这是为了同一个词语在不同模块中可以有不同翻译
+   */
+  return array(
+    'guestbook add' => t('guestbook', '发表留言'),
+    'admin guestbook list' => t('guestbook', '管理留言'),
+  );
+}
+
+/**
+ * @Implement of hook_system_admin_menus()
+ * 向系统注册管理菜单
+ */
+function guestbook_system_admin_menus(){
+  return array(array(
+    array(t('guestbook', '留言管理'), 'admin/guestbook'),
+  ), t('guestbook', '留言模块'));
+}
+
+/**
+ * @Implement of hook_comment_is_update()
+ */
+function guestbook_comment_is_create($comment) {
+  if ($comment->ext_type == 'guestbook') {
+    return TRUE;   
+  }
+}
+/**
+ * 评论接口
+ **/
+function guestbook_comment_info(){
+	return array(
+    'guestbook' => array(
+			'name' => '反馈',  // 评论名称
+			'field_title' => true, // 启用标题，默认为 true
+			'user_anonymous' => true, // 允许匿名评论，默认为 false
+		/*'user_anonymous_mail' => true, // 匿名评论必须输入邮箱，默认为 true
+			'user_anonymous_username' => true, // 匿名评论必须输入昵称，默认为 true
+			'user_anonymous_site' => false, // 匿名评论必须输入主页，默认为 false
+			'field_title_required' => false, // 必须输入标题，默认为 false
+			'field_title_max' => 255, // 标题最大长度，不超过 255
+			'field_title_min' => 0, // 标题最小长度
+			'field_body_required' => true, // 必须输入评论内容，默认为 true
+			'field_body_max' => 50000, // 内容最大长度
+			'field_body_min' => 2, // 内容最小长度
+			'field_captcha_all' => false, // 针对所有人启用验证码，默认为 false
+			'field_captcha_anonymous' => true, // 针对匿名用户启用验证码，默认为 true
+			'captcha_image' => '55x16', // 图形验证码的宽高，若不使用图形验证码，赋值为 false
+			'captcha_type' => DIDA_CAPTCHA_TYPE_INT, // 验证码文本类型
+			'default_status' => 1, // 评论状态，默认为 0：未审核
+			*/
+			// 'editor_html' => 0, // 加载  html 编辑器
+			// 'editor_text' => 0, // 加载 文本编辑器
+			// 'default_format' => 0, // 输入格式，留空则使用默认
+			// 'from_update_call' => 'function', // 载入编辑表单时回调函数，如： test(&$form, &$comment) { }
+			// 'from_insert_call' => 'function', // 载入添加表单时回调函数，如： test(&$form) { }
+		)
+	);
+}
+
+/**
+ * 留言详细内容
+ */
+function guestbook_load($id){
+	$fetch = db_query('SELECT n.* FROM {guestbook} n WHERE n.id = ?', array($id), array('return' => 'one'));
+
+	return $fetch;
+}
+/**
+ * 保存留言
+ */
+ function guestbook_save($v){
+  // 插入、更新 用db_exec()
+	$v['ip'] = $_SERVER['REMOTE_ADDR'];
+	$v['created'] = time();
+	if($v['id']){ // 更新
+		$args = array('id');
+    if(db_write_record('guestbook', $v, $args)){
+
+		}
+  }else{
+		if(db_write_record('guestbook', $v)){
+
+		}
+		// 创建成功
+		// 保存字段数据，也必须是对象
+	}
+	dd_set_message('感谢您的反馈，我们会及时同您联系');
+
+  return $value;  
+}
+
+function guestbook_delete($id){                                                  //删除留言
+  if(db_exec('DELETE FROM {guestbook} WHERE id = ?', array($id))){
+		
+		dd_goto(dd_get_history());
+  }
+}
+
+function guestbook_list(){ 
+  //获取指定分类留言列表$tid必须
+  $args = NULL;
+  $where = ' a.id>0';
+  
+	$fetch = db_query('SELECT a.* FROM {guestbook} a ORDER BY a.id DESC', $args);
+
+	return $fetch;
+}
+
+function guestbook_category_list($num = 10){ 
+  //获取指定分类留言列表$tid必须
+  $args = NULL;
+  $where = ' a.id>0';
+  
+	$fetch = pager_query('SELECT a.* FROM {guestbook} a ORDER BY a.id DESC', $num, 0, $args);
+	if($fetch){
+		foreach($fetch as $gbook){
+			$comments = db_query("SELECT body FROM {comment} WHERE ext_id = ? and ext_type = ?",array($gbook->id,'guestbook'));
+			if($comments){
+				foreach($comments as $val){
+					$gbook->replay[] = $val->body;
+				}
+			}
+		}
+	}
+
+	return $fetch;
+}
+
+/**
+ *留言表单
+ **/
+function guestbook_node_form($guestbook = NULL){
+  $form['settings'] = array(
+    '#redirect' => url('guestbook'), // 提交成功后跳转地址
+		'#validate' => array('guestbook_node_form_validate'), // 调用验证函数
+  );
+  $form['fields']['id'] = array(
+    '#type' => 'hidden',
+    '#default_value' => $guestbook->id,
+    '#constant' => 1
+  );  
+  $form['fields']['title'] = array(
+    '#title' => t('guestbook', '联系方式'),
+    '#type' => 'textfield',
+    '#default_value' => $guestbook->title,
+    '#required' => 0,
+    '#weight' => 10,
+    '#attributes' => array('size' => 20)
+  );
+  $form['fields']['body'] = array(
+    //'#title' => t('body', '内容'),
+    '#type' => 'textarea',
+    '#default_value' => $guestbook->body,
+    '#weight' => 0,
+    //'#required' => 1,
+    '#attributes' => array('size' => 20)
+  );  
+  $form['fields']['submit'] = array(
+    '#type' => 'submit',
+    '#submit' => 'guestbook_node_form_submit', // 提交时回调函数
+    '#weight' => 100
+  );
+  
+  return $form;
+}
+function guestbook_node_form_validate($form, $v){
+	if($v->title == ''){
+		//$error = '昵称不能为空';
+	}
+	if($v->body == ''){
+		$error['body']['#error'][] = '内容为空';
+	}
+	return $error;
+}
+// 表单提交回调函数
+function guestbook_node_form_submit($form, $v){
+  // 插入、更新 用db_exec()
+	guestbook_save($v);
+}
+
+function guestbook_search_form(){
+  $form['settings'] = array(
+    '#attributes' => array('class' => 'search_form') // 提交成功后跳转地址
+  );
+  $form['fields']['title'] = array(
+    '#title' => t('guestbook', '标题'),
+    '#type' => 'textfield',
+    '#default_value' => $_GET['title'],
+    '#attributes' => array('size' => 10)
+  );
+  $form['fields']['submit'] = array(
+    '#type' => 'submit',
+    '#submit' => 'guestbook_search_form_submit', // 提交时回调函数
+    '#weight' => 100
+  );
+	return $form;
+}
+
+function guestbook_search_form_submit(&$form,&$v){
+	dd_goto($_GET['q'], array('title' => $v['title']));
+}
+
+/**
+ * 留言管理
+ */
+function guestbook_admin_page(){                  //$vid是搜索表单需要的，当留言模块开启添加自定义字段后填写
+  $args = NULL;
+  $where = ' n.id>0';
+	if($_GET['title']){
+	  $where .= ' and n.title LIKE ?';
+	  $args[] = '%'.$_GET['title'].'%';
+	}
+  $output = dd_get_form('guestbook_search_form');
+  if($fetch = pager_query('SELECT n.* FROM {guestbook} n WHERE '.$where.' ORDER BY n.id DESC',10,0,$args)){  
+		$output .= '<form name="oform" id="oform" accept-charset="UTF-8" action="guestbook/duoxuan" method="post">';
+			foreach($fetch as $o){
+				$term = get_term_bynid($o->id);
+				$table[] = array('<input name="id[]" type="checkbox" value="'.$o->id.'" />'.$o->id, $o->title, '<div class="atitle">'.$o->body.'</div>', $o->ip,  date('Y-m-d',$o->created), l('查看','admin/guestbook/'.$o->id.'/replay').' | '.l('删除','guestbook/'.$o->id.'/delete',  array('attributes' => array('class' => 'confirm'))));
+			}
+		$output .= theme('table', array('序号','标题', '内容', '来源ip', '时间','操作'), $table);
+		$output .= '<div id="duoxuan"><input type="submit" name="submit" value="删除" id="delete"/></div></form>';
+		$output .= pager_view(); // 调用分页
+  }
+
+  return $output;
+}

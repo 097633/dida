@@ -1,0 +1,179 @@
+<?php
+// $Id$
+
+/**
+ * @Implement of hook_update_x()
+ */
+function voteapi_update_1(){
+  $ext_id = array(
+    'type' => 'int',
+    'not null' => TRUE,
+    'unsigned' => TRUE,
+    'default' => 0,
+    'description' => '扩展 id'
+  );
+  
+  $ret = db_add_field('voteapi_info', 'ext_id', $ext_id);
+  db_add_index('voteapi_info', 'te', array('type', 'ext_id'));
+  
+  $value = array(
+    'type' => 'numeric',
+    'not null' => TRUE,
+    'precision' => 11,
+    'scale' => 2,
+    'default' => 0,
+    'description' => '值',
+  );
+  
+  db_change_field('voteapi', 'value', 'value', $value);
+  
+  return $ret;
+}
+
+/**
+ * @Implement of hook_schema()
+ */
+function voteapi_schema() {
+  $schema['voteapi'] = array(
+    'description' => '记录节点总票数',
+    'fields' => array(
+      'vid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'nid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '节点 id',
+      ),
+      'type' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '自定义类型',
+      ),
+      'tags' => array(
+        'type' => 'varchar',
+        'length' => 8,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '统计类型，基本类型：sum： average：count',
+      ),
+      'value' => array(
+        'type' => 'numeric',
+        'not null' => TRUE,
+        'precision' => 11,
+        'scale' => 2,
+        'default' => 0,
+        'description' => '值',
+      ),
+      'timestamp' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '投票时间',
+      ),
+    ),
+    'indexes' => array(
+      'type' => array('type'),
+    ),
+    'unique keys' => array(
+      'ntv' => array('nid', 'type', 'tags'),
+    ),
+    'primary key' => array('vid'),
+  );
+  
+  $schema['voteapi_info'] = array(
+    'description' => '投票明细',
+    'fields' => array(
+      'iid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'nid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '节点 id',
+      ),
+      'type' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '自定义类型',
+      ),
+      'ext_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '扩展 id',
+      ),
+      'value' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '值，只允许整型',
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '用户 id',
+      ),
+      'host' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '用户主机',
+      ),
+      'timestamp' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => '投票时间',
+      ),
+    ),
+    'indexes' => array(
+      'te' => array('type', 'ext_id'),
+      'type' => array('type'),
+      'nt' => array('nid', 'type'),
+      'value' => array('value', 'type')
+    ),
+    'primary key' => array('iid'),
+  );
+  return $schema;
+}
+
+/**
+ * @Implement of hook_install()
+ */
+function voteapi_install() {
+  $ret = array();
+  $ret = module_install_schema('install', 'voteapi');
+  return $ret;
+}
+
+/**
+ * @Implement of hook_uninstall()
+ */
+function voteapi_uninstall() {
+  $ret = array();
+  $ret = module_install_schema('uninstall', 'voteapi');
+  
+  db_exec('DELETE FROM {variable} WHERE name LIKE ?', array('voteapi_%'));
+  var_init();
+  
+  return $ret;
+}

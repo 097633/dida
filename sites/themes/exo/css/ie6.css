@@ -1,0 +1,16 @@
+.banico a{
+	padding-left:5px;
+	margin-left:5px;
+}
+.searchbox{
+	bottom:0px;
+}
+.searchbox input{
+	padding-top:5px;
+}
+.newstt .more, h3 .more{
+	right:20px;
+}
+.zhuanlan .zlzzico {
+	right:150px;
+}

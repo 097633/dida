@@ -1,0 +1,1809 @@
+<?php
+// $Id: content.module 6 2013-02-25 20:49:15Z east $
+
+// public content_get_default_table() {{{ 
+/**
+ * content_get_default_table
+ * 内容存储数据表结构。每添加一个内容类型，将创建一个表（表名如：content_test）
+ * 
+ * @access public
+ * @return array
+ */
+function content_get_default_table() {
+  return array(
+    'description' => '',
+    'fields' => array(
+      'nid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'title' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '标题',
+      ),
+      'body' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'description' => '内容'
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+        'description' => '创建用户 id',
+      ),
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'size' => 'tiny',
+        'default' => 1,
+        'description' => '状态, 0：隐藏，1、正常',
+      ),
+      'comment_count' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+        'description' => '评论数量',
+      ),
+      'format' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+        'description' => '输入格式',
+      ),
+      'visit' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+        'description' => '浏览计数',
+      ),
+      'created' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+        'description' => '创建时间',
+      ),
+      'updated' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+        'description' => '更新时间',
+      ),
+			'fid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => '缩略图id',
+      ),
+      'flag' => array(
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => '推荐位',
+      ),
+			'description' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'medium',
+        'description' => '描述'
+      ),
+    ),
+    'indexes' => array(
+      'sc' => array('status', 'created'),
+      'su' => array('status', 'updated'),
+      'scc' => array('status', 'comment_count'),
+      'sv' => array('status', 'visit'),
+      'uu' => array('uid', 'updated'),
+      'uc' => array('uid', 'comment_count'),
+      'uv' => array('uid', 'visit'),
+    ),
+    'primary key' => array('nid'),
+  );
+}
+// }}}
+
+/**
+ * @Implement of hook_menu()
+ */
+function content_menu() {
+  $items = array();
+  
+  $items['admin/content/list/%'] = array(
+    'description' => '内容管理',
+    'load_functions' => array(3 => array('content_type_load')),
+    'access_arguments' => array('admin content view'),
+    'page_callback' => 'content_admin_list',
+    'page_arguments' => array(3),
+    'file' => 'content.admin.inc',
+  );
+  
+  $items['content/add/%'] = array(
+    'title' => '添加内容',
+    'load_functions' => array(2 => array('content_type_load')),
+    'access_callback' => 'content_is_create',
+    'access_arguments' => array(2),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('content_form', 2),
+    'file' => 'content.form.inc',
+  );
+  
+  $items['content/%/%/edit'] = array(
+    'description' => '编辑内容',
+    'load_functions' => array(1 => array('content_type_load'), 2 => array('content_load', 1)),
+    'access_callback' => 'content_is_update',
+    'access_arguments' => array(1, 2),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('content_form', 1, 2),
+    'file' => 'content.form.inc',
+  );
+   
+  $items['content/%/%/delete'] = array(
+    'description' => '删除内容',
+    'load_functions' => array(1 => array('content_type_load'), 2 => array('content_load', 1)),
+    'access_callback' => 'content_is_delete',
+    'access_arguments' => array(1, 2),
+    'page_callback' => 'dd_get_form',
+    'page_arguments' => array('content_delete_form', 1, 2),
+    'file' => 'content.form.inc',
+  );
+  
+  $items['content/%/%'] = array(
+    'description' => '内容浏览',
+    'load_functions' => array(1 => array('content_type_load'), 2 => array('content_load', 1)),
+    'access_callback' => 'content_is_view',
+    'access_arguments' => array(1, 2),
+    'page_callback' => 'content_page',
+    'page_arguments' => array(1, 2),
+    'file' => 'content.page.inc',
+  );
+   
+  $items['content/type/%'] = array(
+    'description' => '按类型浏览',
+    'load_functions' => array(2 => array('content_type_load')),
+    'access_callback' => 'content_is_type_view',
+    'access_arguments' => array(2),
+    'page_callback' => 'content_page_type',
+    'page_arguments' => array(2),
+    'file' => 'content.page.inc',
+  );
+
+	$items['archives/%/%'] = array(
+    'description' => '按类型浏览',
+    'access_callback' => 'content_is_type_view',
+    'access_arguments' => array(2),
+    'page_callback' => 'conent_archives_page',
+  );
+   
+  $items['admin/content/type'] = array(
+    'title' => '内容类型',
+    'access_arguments' => array('admin content type'),
+    'page_callback' => 'content_admin_type',
+    'file' => 'content.field.inc'
+  );
+
+	$items['admin/content/change/status'] = array(
+    'title' => 'ajax审核',
+    'access_arguments' => array('admin content view'),
+    'page_callback' => 'change_status',
+  );
+ 
+	$items['cweibo'] = array(
+    'title' => '微博同步',
+    'access_callback' => TRUE,
+    'access_arguments' => array(2),
+    'page_callback' => 'cweibo_page',
+    'page_arguments' => array(''),
+  );
+
+	$items['xiangguan'] = array(
+    'title' => '相关数据',
+    'access_callback' => TRUE,
+    'page_callback' => 'xiangguan_page',
+    'page_arguments' => array(''),
+  );
+
+	$items['xgyd'] = array(
+    'title' => '相关阅读',
+    'access_callback' => TRUE,
+    'page_callback' => 'xgyd_page',
+    'page_arguments' => array(''),
+  );
+
+	$items['rss'] = array(
+    'title' => 'RSS订阅',
+    'access_callback' => TRUE,
+    'page_callback' => 'rss_page',
+    'page_arguments' => array(''),
+  );
+	$items['content/comment/replay'] = array(
+    'access_callback' => TRUE,
+    'page_callback' => 'comment_replay',
+    'page_arguments' => array(''),
+  );
+	$items['tougao'] = array(
+    'title' => '投稿',
+    'access_callback' => TRUE,
+    'page_callback' => 'tougao_page',
+    'page_arguments' => array(''),
+  );
+
+	$items['ajax_login'] = array(
+    'title' => '用户登录',
+    'access_callback' => TRUE,
+    'page_callback' => 'ajax_login',
+    'page_arguments' => array(''),
+  );
+	$items['zlzz'] = array(
+    'title' => '专栏作者',
+    'access_callback' => TRUE,
+    'page_callback' => 'zlzz_page',
+    'page_arguments' => array(''),
+  );
+	$items['wxx_scoll'] = array(
+    'access_callback' => TRUE,
+    'page_callback' => 'wxx_scoll_page',
+    'page_arguments' => array(''),
+  );
+	$items['pweibo/%/%'] = array(
+    'description' => '长微博生成',
+    'load_functions' => array(1 => array('content_type_load'), 2 => array('content_load', 1)),
+    'access_callback' => 'content_is_view',
+    'access_arguments' => array(1, 2),
+    'page_callback' => 'pweibo_page',
+    'page_arguments' => array(1, 2),
+    'file' => 'content.page.inc',
+  );
+	$items['psweibo/%/%'] = array(
+    'description' => '输出图片',
+    'load_functions' => array(1 => array('content_type_load'), 2 => array('content_load', 1)),
+    'access_callback' => TRUE,
+    'page_callback' => 'psweibo_page',
+    'page_arguments' => array(1, 2),
+    'file' => 'content.page.inc',
+  );
+	$items['weixin/%/%'] = array(
+    'description' => '微信',
+    'load_functions' => array(1 => array('content_type_load'), 2 => array('content_load', 1)),
+    'access_callback' => TRUE,
+    'page_callback' => 'weixin_page',
+    'page_arguments' => array(1, 2),
+  );
+  return $items; 
+}
+
+/**
+ * @Implement of hook_perm()
+ */
+function content_perm() {
+  $perm = array(
+    'admin content view' => '内容管理',
+    'admin content type' => '内容类型管理',
+  );
+
+  if ($data = content_get_type_by_type()) {
+    foreach ($data as $o) {
+      $perm['content ' . $o->type . ' view'] = '浏览 ' . $o->name;
+      $perm['content ' . $o->type . ' create'] = '创建 ' . $o->name;
+      $perm['content ' . $o->type . ' update own'] = '编辑自己添加的 ' . $o->name;
+      $perm['content ' . $o->type . ' update'] = '编辑全部 ' . $o->name;
+      $perm['content ' . $o->type . ' delete own'] = '删除自己添加的 ' . $o->name;
+      $perm['content ' . $o->type . ' delete'] = '删除全部 ' . $o->name;
+      if ($o->data['comment']) {
+        $perm['content ' . $o->type . ' comment view'] = '浏览 ' . $o->name . ' 评论';
+        $perm['content ' . $o->type . ' comment create'] = '发布 ' . $o->name . ' 评论';
+        $perm['content ' . $o->type . ' comment update'] = '编辑所有 ' . $o->name . ' 评论';
+        $perm['content ' . $o->type . ' comment update own'] = '编辑自己发布的 ' . $o->name . ' 评论';
+        $perm['content ' . $o->type . ' comment delete'] = '删除所有 ' . $o->name . ' 评论';
+        $perm['content ' . $o->type . ' comment delete own'] = '删除自己发布的 ' . $o->name . ' 评论';
+      }
+    }
+  }
+
+  return $perm;
+}
+
+// public content_is_create($type) {{{ 
+/**
+ * content_is_create
+ *  判断创建内容权限
+ * 
+ * @param object $type 
+ * @access public
+ * @return bool
+ */
+function content_is_create($type) {
+  if (user_access('content ' . $type->type . ' create')) {
+    $type->is_create = true;
+    // 若将 $type->is_create 设为 false，则不允许创建内容
+    module_invoke_all('content_is_create', $type);
+    return $type->is_create;
+  }
+}
+// }}}
+
+// public content_is_view($type, $content) {{{ 
+/**
+ * content_is_view
+ * 判断浏览权限
+ * 
+ * @param object $type 
+ * @param object $content 
+ * @access public
+ * @return bool
+ */
+function content_is_view($type, $content) {
+	if($type->type == 'news'){
+		if (user_access('content ' . $type->type . ' view')) { 
+			$content->is_view = true;
+			// 若将 $content->is_view 设为 false，则不允许浏览
+			module_invoke_all('content_is_view', $content);  
+			return $content->is_view;
+		}
+	}else{
+		if ($content->status > 0 && user_access('content ' . $type->type . ' view')) { 
+			$content->is_view = true;
+			// 若将 $content->is_view 设为 false，则不允许浏览
+			module_invoke_all('content_is_view', $content);  
+			return $content->is_view;
+		}
+	}
+}
+// }}}
+
+// public content_is_update($type, $content) {{{ 
+/**
+ * content_is_update
+ *  判断编辑内容权限
+ * 
+ * @param object $type 
+ *  一条内容类型记录
+ * @param object $content 
+ *  一条内容记录
+ * @access public
+ * @return bool
+ */
+function content_is_update($type, $content) {
+  if (user_access('content ' . $type->type . ' update') || 
+  (user_access('content ' . $type->type . ' update own') && $GLOBALS['user']->uid == $content->uid)) {
+    $content->is_update = true;
+    // 若将 $content->is_udpate 设为 false，则不允许编辑
+    module_invoke_all('content_is_update', $content);  
+    return $content->is_update;
+  }
+}
+// }}}
+
+// public content_is_delete($type, $content) {{{ 
+/**
+ * content_is_delete
+ *  判断删除内容权限
+ * 
+ * @param object $type 
+ *  一条内容类型记录
+ * @param object $content 
+ *  一条内容记录
+ * @access public
+ * @return bool
+ */
+function content_is_delete($type, $content) {
+  if (user_access('content ' . $type->type . ' delete') || 
+  (user_access('content ' . $type->type . ' delete own') && $GLOBALS['user']->uid == $content->uid)) {
+    $content->is_delete = true;
+    // 若将 $content->is_delete 设为 false，则不允许删除
+    module_invoke_all('content_is_delete', $content);  
+    return $content->is_delete;
+  }
+}
+// }}}
+
+// public content_is_type_view($type) {{{ 
+/**
+ * content_is_type_view
+ *  验证内容类型列表浏览权限
+ * 
+ * @param object $type 
+ * @access public
+ * @return bool
+ */
+function content_is_type_view($type) {
+  return user_access('content ' . $type->type . ' view');
+}
+// }}}
+
+/**
+ * @Implement of hook_system_admin_menus()
+ */
+function content_system_admin_menus() {
+  $menu = array(array(), t('content', '内容'));
+
+  if ($data = content_get_type_by_type()) {
+    foreach ($data as $o) {
+      $menu[0][] = array(t('content', '!name管理', array('!name' => $o->name)), 'admin/content/list/' . $o->type);
+    }
+  }
+
+  $menu[0][] = array(t('content', '内容类型'), 'admin/content/type');
+
+  return $menu;
+}
+
+function conent_archives_page(){
+	$type = arg(1);
+	$query = "select nid from {content_ext_".$type."} WHERE FROM_UNIXTIME(created, '%Y-%m') = ?";
+	if ($fetch = pager_query($query, 16, 0, NULL, array(arg(2)))) {
+    $item = array();
+    foreach ($fetch as $key=>$o) {
+      $data['list'][$key] = content_load($o->nid, $type);
+    }
+		$data['term'] = $term;
+    $content = theme('content_category', $data);
+  }else{
+		$content = system_no_content();
+	}
+
+	return $content;
+}
+/**
+ * @Implement of hook_field_term_view()
+ */
+function content_field_term_view($term) {  
+	if($term->field_id == '8'){	
+		dd_goto('tag/'.$term->name);
+	}
+	if($term->tid == 21){
+		$stype = 'news';
+	}elseif($term->tid == 22){
+		$stype = 'keji';
+	}elseif($term->tid == 23){
+		$stype = 'guandian';
+	}
+	dd_add_js(array('stype' => array($stype)), 'setting');
+	$tmp = explode('@', $term->description);
+	if($tmp[0] != ''){
+		dd_set_title(array($tmp[0]));
+	}else{
+		dd_set_title(array($term->name));
+	}
+	if($tmp[1] != ''){
+		dd_set_html_head('<meta name="keywords" content="'.$tmp[1].','.$term->name.'" />');
+	}
+	if($tmp[2] != ''){
+		dd_set_html_head('<meta name="description" content="'.$tmp[2].'" />');
+	}
+	dd_set_breadcrumb(array(l($term->name, url('category/'.$term->tid))));
+
+  if (!$type = content_type_load(substr($term->field->type, 4))) {
+    dd_get_access();
+  }
+  $content = system_no_content();
+
+  $terms = array($term->tid => $term->name);
+
+  // 获取类别的所有子级
+  field_get_term_childrens($term->fid, field_get_cache_term_id($term->field->field_id), $terms);
+
+  $query = 'SELECT DISTINCT(ftn.nid), n.nid FROM {content_ext_' . $type->type . '} n 
+  INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid';
+
+  $tids = array();
+  
+  foreach ($terms as $tid => $name) {
+    $tids[] = $tid;
+  }
+  
+	if($term->field_id == 16){
+		$query .= ' WHERE n.status > 0 AND ftn.tid IN (' . implode(',', $tids) . ')';
+	}else{
+		$query .= ' WHERE n.status > 0 AND ftn.tid IN (' . implode(',', $tids) . ')';
+	}
+  $query .= ' ORDER BY n.created DESC';
+
+  if ($fetch = pager_query($query, 16)) {
+    $item = array();
+    foreach ($fetch as $key=>$o) {
+      $data['list'][$key] = content_load($o->nid, $type->type);
+    }
+		$data['term'] = $term;
+    $content = theme('content_category', $data);
+  }else{
+		$content = system_no_content();
+	}
+
+  return $content;
+}
+
+/**
+ * @Implement of hook_field_view()
+ */
+function content_field_view($field) {
+  dd_set_title(array($field->name));
+  dd_set_breadcrumb(array($field->name));
+
+  if (!$type = content_type_load(substr($field->type, 4))) {
+    dd_get_access();
+  }
+  
+  $content = system_no_content();
+
+  if ($terms = field_get_cache_term_id($field->field_id)) {
+    $query = 'SELECT DISTINCT(ftn.nid), n.nid, n.title, n.created, n.updated FROM {content_ext_' . $type->type . '} n 
+    INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid';
+    $tids = array();
+    
+    foreach ($terms as $term) {
+      $tids[] = $term->tid;
+    }
+    
+    $query .= ' WHERE n.status > 0 AND ftn.tid IN (' . implode(',', $tids) . ')';
+    $query .= ' ORDER BY n.created DESC';
+
+    if ($fetch = pager_query($query, 20)) {
+      $item = array();
+      foreach ($fetch as $o) {
+        $item[] = l($o->title, 'content/' . $type->type . '/' . $o->nid);
+      }
+      $content = theme('item_list', $item);
+      $content .= pager_view();
+    }
+  }
+
+  return $content;
+}
+
+// public content_type_load($tid) {{{ 
+/**
+ * content_type_load
+ * 根据 tid 或 type 加载一个内容类型
+ * 
+ * @param int|string $data
+ *  内容类型的 tid 或 type
+ * @access public
+ * @return void
+ */
+function content_type_load($data) {
+  $type = NULL;
+
+  if (is_numeric($data)) {
+    $type = content_get_type_by_tid($data);
+  } else {
+    $type = content_get_type_by_type($data);
+  }
+
+  if ($type) module_invoke_all('content_type_load', $type);
+
+  return $type;
+}
+// }}}
+
+// public content_type_delete($type) {{{ 
+/**
+ * content_type_delete
+ * 删除一个内容类型
+ * 
+ * @param object $type 
+ *  一条类型记录
+ * @access public
+ * @return bool
+ */
+function content_type_delete($type) {
+  // 即将删除
+  module_invoke_all('content_type_before_delete', $type);
+  
+  $table = 'content_ext_' . $type->type;
+
+  // 删除内容数据表
+  if (db_is_table($table) && !db_drop_table($table)) {
+    dd_set_message(t('content', '数据表 !name 删除失败，请手动删除', array('!name' => $table)), 'error');
+  }
+
+  if (db_exec('DELETE FROM {content_type} WHERE tid = ?', array($type->tid))) {
+    // 删除类型属性
+    field_group_delete('content', 'ext_' . $type->type);
+    // 清除缓存
+    content_system_cache_clear('submit', array('value' => array('content_type' => true)));
+    module_invoke_all('content_type_delete', $type);
+    return true;
+  }
+
+  return false;
+}
+// }}}
+
+// public content_type_alidate($v, &$form = NULL) {{{ 
+/**
+ * content_type_alidate
+ * 验证内容类型
+ * 
+ * @param object $v 
+ *  一条内容类型记录
+ * @param array $form 
+ *  表单对象
+ * @access public
+ * @return bool|array 通过验证则返回 false，未通过返回错误信息
+ */
+function content_type_validate($v, &$form = NULL) {
+  $e = NULL;
+  
+  if (mb_strlen($v->name) > 30) {
+    $e['name']['#error'][] = t('content', '名称长度不超过 30 个字符');
+  } else if (db_query('SELECT tid FROM {content_type} WHERE name = ? AND tid != ?',
+  array($v->name, $v->tid), array('return' => 'column'))) {
+    $e['name']['#error'][] = t('content', '类型名称已经存在，请换一个试试');
+  } else if (!empty($v->type)) {
+    if (preg_match('/[^0-9|a-z]/', $v->type)) {
+      $e['type']['#error'][] = t('content', '系统名称只能是数字和小写字母');
+    } else if (strlen($v->type) > 12) {
+      $e['type']['#error'][] = t('content', '长度不超过 12 个字符');
+    } else if (db_query('SELECT tid FROM {content_type} WHERE type = ? AND tid != ?',
+    array($v->type, $v->tid), array('return' => 'column'))) {
+      $e['type']['#error'][] = t('content', '系统名称已经存在，请换一个试试');
+    }
+  }
+
+  if (empty($e)) module_invoke_all('content_type_validate', $v, $form);
+  
+  return $e;
+}
+// }}}
+
+// public content_type_save($v, &$form = NULL) {{{ 
+/**
+ * content_type_save
+ * 保存内容类型
+ * 
+ * @param object $v 
+ * @param array $form 
+ * @access public
+ * @return false|object
+ */
+function content_type_save($v, &$form = NULL) {
+  if (!empty($v->tid)) {
+    $args = array('tid');
+    unset($v->type); // type 不允许修改
+  } else {
+    $args = NULL;
+  }
+  
+  if (db_write_record('content_type', $v, $args)) {
+    if (!empty($v->type) && !content_create_table($v)) {
+      dd_set_message(t('content', '数据表未能创建成功，请再次编辑，尝试重新创建'), 'error');
+    } else {
+      // 清除缓存
+      content_system_cache_clear('submit', array('value' => array('content_type' => true)));
+      module_invoke_all('content_type_save', $type, $form);
+      dd_set_message(t('content', '操作成功'));
+      return true;
+    }
+  }
+  return false;
+}
+// }}}
+
+// public content_create_table($type) {{{ 
+/**
+ * content_create_table
+ *  为内容类型创建存储表，如果表已经存在，则不再创建
+ * 
+ * @param object $type 
+ * @access public
+ * @return bool
+ */
+function content_create_table($type) {
+  $table = 'content_ext_' . $type->type;
+  if (db_is_table($table)) {
+    return true;
+  } else if ($query = db_create_table($table, content_get_default_table())) {
+    dd_set_message(implode('<br/>', $query));
+    return true;
+  }
+  return false;
+}
+// }}}
+
+// public content_load($type, $nid) {{{ 
+/**
+ * content_load
+ * 根据 type 和 nid 加载一个内容对象
+ * 
+ * @param int $nid
+ *  内容 nid
+ * @param string $type
+ *  内容类型
+ * @access public
+ * @return object
+ */
+function content_load($nid, $type) {
+  static $content;
+  $key = $nid . $type;
+
+  if (!isset($content[$key])) {
+    if ($content[$key] = db_query('SELECT n.*, u.name FROM {content_ext_' . $type . '} n INNER JOIN {users} u 
+    ON n.uid = u.uid WHERE n.nid = ?', array($nid), array('return' => 'one'))) {
+      $content[$key]->type = $type;
+      $content[$key]->table = 'content_ext_' . $type;
+      $content[$key]->path = url('content/' . $type . '/' . $nid);
+			$content[$key]->url = $content[$key]->path;
+			//$content[$key]->alias = db_query("SELECT alias FROM {alias} WHERE path = ?", array('content/' . $type . '/' . $nid), array('return' => 'column'));
+			$content[$key]->litpic = db_query("SELECT filepath FROM {files} WHERE fid = ?", array($content[$key]->fid), array('return' => 'column'));
+      // 类型扩展属性
+      field_get_node_load('content', 'ext_' . $type, $content[$key]);
+      module_invoke_all('content_load', $content[$key]);
+			if($content[$key]->fields['referer']->text != ''){
+				if($content[$key]->fields['referer']->text == '车云网'){
+					$content[$key]->name = '车云网';
+					$content[$key]->lyurl = url('/');
+				}else{
+					$tmp = explode('@', $content[$key]->fields['referer']->text);
+					$content[$key]->name = $tmp[0];
+					$content[$key]->lyurl = $tmp[1];
+					$content[$key]->nofollow = 'nofollow';
+				}
+			}else{
+				$content[$key]->name = '';
+				$content[$key]->lyurl = url('/');
+			}
+    }
+  }
+  
+  return $content[$key];
+}
+// }}}
+
+// public content_delete($type, $nid) {{{ 
+/**
+ * content_delete
+ *  删除一条内容
+ * 
+ * @param string $type 
+ *  内容类型
+ * @param int $nid 
+ *  内容 id
+ * @access public
+ * @return bool
+ */
+function content_delete($type, $nid) {
+  if ($content = content_load($nid, $type)) {
+    if (db_exec('DELETE FROM {content_ext_' . $type . '} WHERE nid = ?', array($nid))) {
+
+      // 将内容所关联的文件状态设置为 0，待系统自行删除
+      db_exec('UPDATE {files} SET status = 0 WHERE ext_type = ? AND ext_id = ?', 
+      array('content_' . $type, $nid));
+      
+      // 删除内容扩展字段
+      field_get_node_load('content', 'ext_' . $type, $content);
+
+      module_alter_all('content_delete', $content);
+      
+      return true;
+    }
+  }
+}
+// }}}
+
+// public content_validate($content, &$form = NULL) {{{ 
+/**
+ * content_validate
+ * 验证一条内容记录
+ * 
+ * @param object $content 
+ *  待验证的内容
+ * @param array $form 
+ *  若通过表单提交，表单对象
+ * @access public
+ * @return bool|array 验证通过则返回 false，未通过返回一个适用 form 的错误信息数组
+ */
+function content_validate($content, &$form = NULL) {
+  $e = NULL;
+  
+  if (mb_strlen($content->title) > 255) {
+    $e['title']['#error'][] = t('content', '长度不能大于 255 个字符');
+  } else if (!$e = field_get_node_validate('content', 'ext_' . $content->type, $content)) {
+    $e = module_invoke_all('content_validate', $content, $form);
+  }
+	/*
+	if($content->type == 'news'){
+		if (strpos($content->fields['tags'], ',') !== false) {
+			$tmp = explode(',', $content->fields['tags']);
+		}elseif(strpos($content->fields['tags'], '，') !== false){
+			$tmp = explode('，', $content->fields['tags']);
+		}else{
+			$tmp = array($content->fields['tags']);
+		}
+		foreach($tmp as $val){
+			$tid = db_query("SELECT tid FROM {fields_term} WHERE name = ?", array($val), array('return' => 'column'));
+			if($tid == ''){
+				$e['fields']['tags']['#error'][] = t('content', $val.'标签不允许');
+			}
+		} 
+		$uid = db_query("SELECT uid FROM {users} WHERE name = ?", array($content->fields['zuozhe']), array('return' => 'column'));
+		if($uid != ''){
+			$content->uid = $uid;
+		}
+	}
+	*/
+
+  return $e;
+}
+// }}}
+
+/**
+ * 保存一条文章
+ * @param (object) $article
+ * 	文章记录，若有 nid，则更新记录
+ * @param (bool) $validate
+ * 	是否验证文章
+ * @return (false|true) &$error 为验证错误信息
+ */
+function content_save($content, $validate = true, &$error = NULL) {
+  if ($validate && $error = content_validate($content)) {
+    return false;
+  }
+	if($content->created) $content->created = strtotime($content->created);
+  if (!empty($content->nid)) {
+    $args = array('nid');
+    $content->updated = time();
+    $content->is_insert = false;
+  } else {
+    $args = NULL;
+    if (empty($content->created)) $content->created = time();
+    if (empty($content->updated)) $content->updated = time();
+    if (empty($content->uid)) $content->uid = $GLOBALS['user']->uid;
+    $content->is_insert = true;
+  }
+  
+	if($content->alias != ''){
+		$alias = 'content/'.$content->type.'/'.$content->nid;
+		menu_set_alias($alias, $content->alias, $content->type, $content->nid); // 写入别名
+	}
+
+  if (db_write_record('content_ext_' . $content->type, $content, $args)) {
+    // 扩展属性
+    field_get_node_save('content', 'ext_' . $content->type, $content);
+
+    content_set_type_count($content->type);
+
+    module_invoke_all('content_save', $content);
+		content_set_ping($content);
+    return $content;
+  }
+}
+
+// public content_set_type_count($type) {{{ 
+/**
+ * content_set_type_count
+ * 更新类型总内容数量
+ * 
+ * @param string $type 
+ * @access public
+ * @return int 内容总数量
+ */
+function content_set_type_count($type) {
+  $count = db_query('SELECT COUNT(nid) FROM {content_ext_' . $type . '} WHERE status > 0',
+  array(), array('return' => 'column'));
+
+  db_exec('UPDATE {content_type} SET count = ? WHERE type = ?', array($count, $type));
+
+  // 更新类型缓存 
+  content_system_cache_clear('submit', array('value' => array('content_type' => true)));
+
+  return $count;
+}
+// }}}
+
+// public content_set_comment_count($type, $nid) {{{ 
+/**
+ * content_set_comment_count
+ * 更新内容评论总数量
+ * 
+ * @param string $type 
+ *  内容类型 type
+ * @param int $nid 
+ *  内容 nid
+ * @access public
+ * @return int 评论总数量
+ */
+function content_set_comment_count($type, $nid) {
+  $count = db_query('SELECT COUNT(cid) FROM {comment} WHERE ext_type =? AND status > 0 AND ext_id = ?',
+  array('content_' . $type, $nid), array('return' => 'column'));
+  db_exec('UPDATE {content_ext_' . $type . '} SET comment_count = ? WHERE nid = ?', array($count, $nid));
+  return $count;
+}
+// }}}
+
+/**
+ * @Implement of hook_theme()
+ */
+function content_theme() {
+  return array(
+    'content' => array(
+      'tpl' => 'content.tpl.php',
+      'description' => '内容浏览模板',
+      'args' => array('content'),
+    ),
+		'content_category' => array(
+      'tpl' => 'category.tpl.php',
+      'description' => '内容分类模板',
+      'args' => array('sdata'),
+    ),
+    'content_type' => array(
+      'tpl' => 'content_type.tpl.php',
+      'description' => '类型列表模板',
+      'args' => array('type'),
+    ),
+		'tougao' => array(
+      'tpl' => 'tougao.tpl.php',
+      'description' => '投稿页面',
+    ),
+		'rss' => array(
+      'tpl' => 'rss.tpl.php',
+      'description' => 'rss页面',
+    ),
+		'changweibo' => array(
+      'tpl' => 'changweibo.tpl.php',
+			'args' => array('content'),
+      'description' => '转发长微博',
+    ),
+		'weixin' => array(
+      'tpl' => 'weixin.tpl.php',
+			'args' => array('content'),
+      'description' => '公众微信',
+    ),
+  );
+}
+
+/**
+ * @Implement of hook_call_custom()
+ */
+function content_call_custom($v){
+  global $conf, $base_url;
+  switch($v['op']){
+    case 'feed':
+      require dd_get_path('module', 'content') . '/content.feed.inc';
+      
+      if($_GET['type'] == 'node'){
+        dd_set_header('Content-Type: application/xml; charset=utf-8');
+          /**
+           * 默认：获取全站最新文章
+           * $_GET['uid']：用户 id，获取该用户最新文章
+           */
+          echo content_get_feed_node($uid = NULL,$type = $_GET['stype'], $tid = $_GET['tid']);
+      }else{
+        echo 'byebye';
+      }
+    break;
+  }
+  exit;
+}
+
+/**
+ * @Implement of hook_template_preprocess_x()
+ * 
+ * 内容可按 type/nid 创建模板文件：
+ * content_ext_{$content->type}_{$content->nid}.tpl.php
+ * content_ext_{$content->type}.tpl.php
+ * content.tpl.php
+ *
+ * 附加 ext，为避免与类型模板 content_type.tpl.php 冲突
+ * 
+ */
+function content_template_preprocess_content(&$var, $hook) {
+  if (isset($var['content']) && $var['content']->type) {
+    $var['theme_config']->tpl[] = 'content_ext_' . $var['content']->type . '_' . $var['content']->nid . '.tpl.php';
+    $var['theme_config']->tpl[] = 'content_ext_' . $var['content']->type . '.tpl.php';
+  } 
+}
+
+/**
+ * @Implement of hook_template_preprocess_x()
+ * 
+ * 类型列表可按 type 创建模板文件：
+ * article_type_{$type->type}.tpl.php
+ * article_type.tpl.php
+ * 
+ */
+function content_template_preprocess_content_type(&$var, $hook) {
+  if (isset($var['type']) && $var['type']->type) {
+    $var['theme_config']->tpl[] = 'content_type_' . $var['type']->type . '.tpl.php';
+  } 
+}
+
+/**
+ * @Implement of hook_template_preprocess_x()
+ * 
+ * category列表可按 type 创建模板文件：
+ * article_type_{$type->type}.tpl.php
+ * article_type.tpl.php
+ * 
+ */
+function content_template_preprocess_content_category(&$var, $hook) {
+  if (isset($var['type']) && $var['type']->type) {
+    $var['theme_config']->tpl[] = 'category_' . $var['type']->type . '.tpl.php';
+  } 
+}
+
+// public content_get_type_by_tid($tid = NULL) {{{ 
+/**
+ * content_get_type_by_tid
+ * 获取所有或指定类型
+ * @param string $tid
+ *  按 tid 获取类型
+ * @access public
+ * @return array|object
+ */
+function content_get_type_by_tid($tid = NULL) {
+  static $data;
+
+  if (!isset($data)) {
+    if ($cache = cache_get('content_get_type_by_tid')) {
+      $data = $cache->data;
+    } else  {
+      $data = array();
+      if ($fetch = db_query('SELECT * FROM {content_type}')) {
+        foreach ($fetch as $o) {
+          $o->data = unserialize($o->data);
+          $data[$o->tid] = $o;
+        }
+      }
+      cache_set('content_get_type_by_tid', $data);
+    }
+  }
+
+  return empty($tid) ? $data : $data[$tid];
+}
+// }}}
+
+// public content_get_type_by_type($type = NULL) {{{ 
+/**
+ * content_get_type_by_type
+ * 获取所有或指定类型
+ * @param string $type
+ *  按 type 获取类型
+ * @access public
+ * @return array|object
+ */
+function content_get_type_by_type($type = NULL) {
+  static $data;
+
+  if (!isset($data)) {
+    if ($cache = cache_get('content_get_type_by_type')) {
+      $data = $cache->data;
+    } else  {
+      $data = array();
+      if ($fetch = db_query('SELECT * FROM {content_type}')) {
+        foreach ($fetch as $o) {
+          $o->data = unserialize($o->data);
+          $data[$o->type] = $o;
+        }
+      }
+      cache_set('content_get_type_by_type', $data);
+    }
+  }
+
+  return empty($type) ? $data : $data[$type];
+}
+// }}}
+
+/**
+ * @Implement of hook_system_cache_clear()
+ */
+function content_system_cache_clear($op = 'list', $v = NULL) {
+  switch ($op) {
+    case 'list':
+    return array(
+      'content_type' => '清除内容类型缓存',
+    );
+    case 'submit':
+      if (!empty($v['value']['content_type'])) {
+        cache_del('cid', 'content_get_type_by_type');
+        cache_del('cid', 'content_get_type_by_tid');
+        cache_del('*', 'admin_menus_'); // 需要清除 admin_menus
+      }
+  }
+}
+
+/**
+ * @Implement of hook_field_call_group()
+ */
+function content_field_call_group($type = NULL) {
+  $groups = array();
+  
+  // 内容类型扩展属性
+  if ($fetch = content_get_type_by_tid()) {
+    foreach ($fetch as $o) {
+      $groups['ext_' . $o->type] = array(
+        'title' => t('content', '!name属性', array('!name' => $o->name)),
+        'fieldset' => true,
+      );
+    }
+  }
+  
+  return $type ? $groups[$type] : $groups;
+}
+
+/**
+ * @Implement of hook_comment_info()
+ */
+function content_comment_info() {
+  $types = array();
+  if ($data = content_get_type_by_type()) {
+    foreach ($data as $o) {
+      $types['content_' . $o->type] = array(
+        'name' => t('content', '!name评论', array('!name' => $o->name)),
+        'default_status' => 1,
+				'field_body_required' => false,
+        'user_anonymous' => true, // 默认匿名评论设置打开
+        'editor' => true, // 默认使用编辑器，由管理员自行设置
+				'user_anonymous_mail' => false, // 匿名评论必须输入邮箱，默认为 true
+				'user_anonymous_username' => false, // 匿名评论必须输入昵称，默认为 true
+				'user_anonymous_site' => false, // 匿名评论必须输入主页，默认为 false
+				'number_desc' => 1,
+      );
+    }
+  }
+  return $types;
+}
+
+// public content_get_comment_type($ext_type) {{{ 
+/**
+ * content_get_comment_type
+ * 根据评论 ext_type，获取到内容类型 type
+ * 
+ * @param string $ext_type 
+ *  评论 ext_type
+ * @access public
+ * @return object 一个内容类型对象
+ */
+function content_get_comment_type($ext_type) {
+  static $data;
+  if (!isset($data[$ext_type])) {
+    if (substr($ext_type, 0, 8) == 'content_') {
+      $data[$ext_type] = content_get_type_by_type(substr($ext_type, 8));
+    } else {
+      $data[$ext_type] = false;
+    }
+  }
+  return $data[$ext_type];
+}
+// }}}
+
+/**
+ * @Implement of hook_comment_goto()
+ */
+function content_comment_goto($comment) {
+  if ($data = content_get_comment_type($comment->ext_type)) {
+    return 'content/' . $data->type . '/' . $comment->ext_id;
+  }
+}
+
+/**
+ * @Implement of hook_comment_delete()
+ */
+function content_comment_delete($comment) {
+  if ($data = content_get_comment_type($comment->ext_type)) {
+    dd_log(
+      'content_' . $data->type,
+      t('content', '删除回复，ID：!id', array('!id' => $comment->cid)),
+      $comment->ext_id2,
+      'content/' . $data->type . '/' . $comment->ext_id
+    );
+    content_set_comment_count($data->type, $comment->ext_id);
+    $comment->redirect = 'content/' . $type . '/' . $comment->ext_id;
+  }
+}
+
+/**
+ * @Implement of hook_comment_save()
+ */
+function content_comment_save($comment) {
+  if ($data = content_get_comment_type($comment->ext_type)) {
+    content_set_comment_count($data->type, $comment->ext_id);
+  }
+}
+
+/**
+ * @Implement of hook_comment_is_delete()
+ */
+function content_comment_is_delete($comment) {
+  if ($data = content_get_comment_type($comment->ext_type)) {
+    if (user_access('content ' . $data->type . ' comment delete')) {
+      // 拥有删除所有评论的权限
+      $comment->is_delete = true;
+    } else if (user_access('content ' . $data->type . ' comment delete own') && $content = content_load($comment->ext_id, $data->type)) {
+      // 拥有删除自己评论的权限
+      $comment->is_delete = $GLOBALS['user']->uid == $content->uid;
+    }
+  }
+}
+
+/**
+ * @Implement of hook_comment_is_update()
+ */
+function content_comment_is_update($comment) {
+  if ($data = content_get_comment_type($comment->ext_type)) {
+    if (user_access('content ' . $data->type . ' comment udpate')) {
+      // 拥有编辑所有评论的权限
+      $comment->is_update = true;
+    } else if (user_access('content ' . $data->type . ' comment update own') && $content = content_load($comment->ext_id, $data->type)) {
+      // 拥有编辑自己评论的权限
+      $comment->is_update = $GLOBALS['user']->uid == $content->uid;
+    }
+  }
+}
+
+/**
+ * @Implement of hook_comment_is_create()
+ */
+function content_comment_is_create($comment) {
+  if ($data = content_get_comment_type($comment->ext_type)) {
+    if ($data->data['comment'] && $content = content_load($comment->ext_id, $data->type)) {
+      $comment->is_create = user_access('content ' . $data->type . ' comment create') && $content->status > 0;
+    }
+  }
+}
+
+/**
+ * @Implement of hook_comment_is_view()
+ */
+function content_comment_is_view($comment) {
+  if ($data = content_get_comment_type($comment->ext_type)) {
+    $comment->is_view = false;
+    if (user_access('content ' . $data->type . ' view') 
+    && user_access('content ' . $data->type . ' comment view') 
+    && $content = content_load($comment->ext_id, $data->type)) {
+      $comment->is_view = $content->status > 0;
+    }
+  }
+}
+
+/**
+ * @Implement of hook_comment_form()
+ */
+function content_comment_form(&$form, &$comment) {
+  if ($data = content_get_comment_type($comment->ext_type)) {
+    if (!empty($comment->cid)) {
+      dd_set_tabs(array(
+        l(t('content', '编辑回复'), $_GET['q']),
+        l(t('content', '返回内容'), 'content/' . $data->type . '/' . $comment->ext_id)
+      ));
+    }
+  }
+}
+
+/**
+ * @Implement of hook_editor_info()
+ */
+function content_editor_info() {
+  $editor = array();
+
+  if (!$datas = content_get_type_by_type()) {
+    return false;
+  }
+  
+  $default = array(
+    'dom' => 'content_form_type_body',
+    'form_id' => 'content_form',
+    'form_field_name' => 'body',
+    'files' => array(
+      '#validate' => array(
+        'status' => 0,
+      )
+    ),
+    'config' => array(
+      'toolbar' => 'medium', 
+    ),
+  );
+
+  foreach ($datas as $key => $data) {
+    $editor['content_' . $key] = array(
+      'name' => $data->name,
+      'status' => 1, 
+      'data' => $default
+    );
+  }
+  
+  return $editor;
+}
+
+/**
+ *@Operating
+ */
+function change_status(){
+	if($_REQUEST['op'] == 'status'){
+		if($_REQUEST['value'] == 1){
+			db_query("UPDATE {content_ext_news} SET status = ?,check_status = ?,check_time = ? WHERE nid = ?", array(1, 1, time(), $_REQUEST['nid']));
+		}elseif($_REQUEST['value'] == 2){
+			db_query("UPDATE {content_ext_news} SET status = ?,check_status = ?,check_time = ? WHERE nid = ?", array(0, 2, time(), $_REQUEST['nid']));
+		}else{
+
+		}
+	}
+	exit();
+}
+
+function content_list($type, $tid = '', $start = 0, $limit = 10, $flag = '', $order = '', $wherem = '', $alltid = 0, $term = 0, $litpic = 1){ 
+  //获取指定分类分类信息列表,没有$tid时按顺序取最后的几个节点
+	$module = 'content_ext_'.$type;
+	$args = array();
+	$where = " WHERE n.nid>0 AND n.status = 1";
+	$where .= ' '.$wherem;
+  if($tid){
+		$where .= ' and ftn.tid>0';
+		if($alltid == 1){
+			$tids = get_allterm_bytid($tid);
+		}else{
+			$tids = array($tid);
+		}
+    //$args[] = $tids;
+    $where .= " and ftn.tid in (".implode(',',$tids).")";
+  }   
+  if($flag){
+    $where .= ' and n.flag = ?';
+    $args[] = $flag;        
+  }
+	if($term == 1){
+		$re = ',ft.name as tname,ft.tid';
+		$join .= ' INNER JOIN {fields_term} ft ON ftn.tid = ft.tid';
+	}
+	if($litpic == 1){
+		$re .= ',f.filepath';
+		$join .= ' LEFT JOIN {files} f ON n.fid = f.fid';
+	}
+	if($order == ''){
+		$order = 'ORDER BY n.nid DESC';
+	}else{
+		$order = 'ORDER BY '.$order;
+	}
+	if(!$tid && !$term){
+		$fetch = db_query('SELECT n.nid FROM {'.$module.'} n LEFT JOIN {users} u ON n.uid = u.uid '.$join.' '.$where .' '.$order, $args, array('limit' => array($start,$limit)));
+	}else{
+		$fetch = db_query('SELECT DISTINCT n.nid FROM {'.$module.'} n INNER JOIN {fields_term_node} ftn ON n.nid = ftn.nid LEFT JOIN {users} u ON n.uid = u.uid '.$join.' '.$where.' '.$order, $args, array('limit' => array($start,$limit)));
+	}
+	foreach($fetch as $key=>$article){
+		$fetch[$key] = content_load($article->nid, $type);
+	}
+
+	return $fetch;
+}
+
+/**
+ * @Implement of hook_site_menu()
+*/ 
+function content_site_menu(&$menu) {
+	//$data = db_query("SELECT ft.* FROM {fields_term} ft LEFT JOIN {fields} f ON ft.field_id = f.field_id WHERE f.module = ? AND f.field_key = ?", array('content', 'lanmu'));
+	$i = 0;
+	$menu[1]['#data'] = l('地接优势', 'article/19');
+	$menu[1]['#weight'] = 0;
+	$menu[7]['#data'] = l('特色小团', 'category/594');
+	$menu[7]['#weight'] = 7;
+	$menu[8]['#data'] = l('公商务团', 'category/595');
+	$menu[8]['#weight'] = 8;
+	$menu[9]['#data'] = l('玩转北欧', 'content/type/news');
+	$menu[9]['#weight'] = 10;
+	$menu[10]['#data'] = l('北欧图集', 'content/type/dutu');
+	$menu[10]['#weight'] = 10;
+}
+
+/**
+ *@Operating   hook_search
+ */
+function content_search_page(){
+	$data = pager_query("SELECT nid FROM {content_ext_news} WHERE title LIKE ?", 10, 0, NULL,  array('%'.$_GET['keyword'].'%'));
+	if($data){  
+		foreach($data as $key=>$val){
+			$data['list'][$key] = content_load($val->nid, 'news');
+		}
+
+    $output .= theme('content_category', $data);
+  }
+
+	return $output;
+}
+
+/**
+ *@Operating  同步微博
+ */
+function cweibo_page(){
+	header('Content-Type: text/html; charset=utf-8');
+	//$uid = db_query("SELECT uid FROM {user_ext} WHERE type = ? ORDER BY rand()", array('sina'), array('return' => 'column'));
+	$caiuser = block_box_load(2);
+	$content = get_user_weibo($caiuser->body);
+	$content = json_decode($content);
+	rsort($content->statuses);
+	foreach($content->statuses as $val){
+		$article->type = 'wxx';
+		if(strpos('%'.$val->text, '//@') != ''){
+			$tmp = explode(':', $val->text);
+			$wb = get_weibo_byid($val->pid);
+			$wdtime = $wb->created_at;
+			$wid = $wb->user->id;
+			$article->body = str_replace('//@', '', $tmp[1]);
+			if($wb->bmiddle_pic != ''){
+				$article->body .= '<img src="'.$wb->bmiddle_pic.'" />';
+			}
+			$midurl = "http://api.t.sina.com.cn/querymid.json?id=".$val->pid;
+		}else{
+			$article->body = $val->retweeted_status->text;
+			$midurl = "http://api.t.sina.com.cn/querymid.json?id=".$val->retweeted_status->id;
+			if($val->retweeted_status->bmiddle_pic != ''){
+				$article->body .= '<img src="'.$val->retweeted_status->bmiddle_pic.'" />';
+			}
+			$wdtime = $val->retweeted_status->created_at;
+			$wid = $val->retweeted_status->user->id;
+		}
+		if($val->retweeted_status->user->verified == 1){
+			$article->flag = 's';
+		}
+		$article->created = strtotime($wdtime);
+		$midjson = @file_get_contents($midurl);
+		$mid = json_decode($midjson);
+		$article->uid = 1;
+		$article->status = 0;
+		$article->description = $val->retweeted_status->id;
+		if($mid->mid != '' && $wid != ''){
+			//db_query("UPDATE {fields_small} SET text = ? WHERE text = ? AND field_id = 19", array($mid->mid, $val->retweeted_status->id));
+			//db_query("UPDATE {content_ext_wxx} SET created = ? WHERE description = ?", array($article->created, $val->retweeted_status->id));
+			$article->comment_count = $val->retweeted_status->reposts_count;
+			$article->fields = array('wzuozhe' => $val->retweeted_status->user->name, 'wid' => $wid, 'sid' => $mid->mid, 'wdtime' => $wdtime);
+			$nid = db_query("SELECT description FROM {content_ext_wxx} WHERE description = ?", array($val->retweeted_status->id), array('return' => 'column'));
+			if(!$nid){
+				content_save($article, false);
+			}
+		}	
+	}
+	echo '<script>window.close();</script>';
+	exit();
+}
+
+function tougao_page(){
+	if($GLOBALS['user']->uid == 0){
+		dd_goto('user/login&redirect=/tougao');
+	}
+	return theme('tougao');
+}
+
+/**
+ *@Operating rss订阅页
+ */
+function rss_page(){
+	return theme('rss');
+}
+
+/**
+ *@Operating   相关阅读选择页面
+ */
+function xgyd_page(){
+	if(strpos($_REQUEST['tags'], ',') !== false){
+		$tmp = explode(',', $_REQUEST['tags']);
+	}elseif(strpos($_REQUEST['tags'], '，') !== false){
+		$tmp = explode('，', $_REQUEST['tags']);
+	}else{
+		$tmp = array($_REQUEST['tags']);
+	}
+	foreach($tmp as $val){
+		$tid = db_query("SELECT tid FROM {fields_term} WHERE field_id = ? AND name = ?", array(8, $val), array('return' => 'column'));
+		$str .= $tid.',';
+	}
+	echo $str;exit();
+}
+
+/**
+ *@Operating   评论回复页
+ */
+function comment_replay(){
+	if(strpos($_REQUEST['body'], 'yinyong@') != ''){
+		$c = db_query("SELECT name,body FROM {comment} WHERE cid = ?", array($_REQUEST['pid']), array('return' => 'one'));
+		$_REQUEST['body'] = preg_replace('/\[(.*?)\]/i', '', $_REQUEST['body']);
+		$_REQUEST['body'] = '<div class="cmyinyong">'.$c->name.'说:<br />'.$c->body.'</div>'.$_REQUEST['body'];
+	}
+	$comment = (object)$_REQUEST;
+	$comment->status = 1;
+	$comment->uid = $GLOBALS['user']->uid;
+	if($_REQUEST['body'] !=''){
+		comment_save($comment);
+		echo url('content/news/'.$comment->ext_id.'?t='.time().'#comment_view_wrapper', array('absolute' => 1));
+	}
+	exit();
+}
+/**
+ *@Operating  相关选择页面
+ */
+function xiangguan_page(){
+	if($_GET['type'] == ''){
+		$output = '<div id="xiangguan">';
+		$output .= '<select id="xselect" name="type">';
+		$output .= '<option value="renwu">人物</option>';
+		$output .= '<option value="qiye">企业</option>';
+		$output .= '<option value="tubiao">图表</option>';
+		$output .= '</select><input id="title" type="text" name="title" value="" style="display:none;" /><input type="button" value="搜索" id="st" />';
+	}
+	$output .= '<div id="xcon"></div>';
+	
+	if($_GET['type'] != ''){
+		$fetch = pager_query("SELECT nid,title FROM {content_ext_".$_GET['type']."} WHERE 1 ORDER BY nid DESC", 20, 0, NULL, array());
+	}
+	if ($fetch) {
+		foreach ($fetch as $o) {
+			$item[] = '<li class="xiangguan_list"><a href="'.url('content/'.$_GET['type'].'/'.$o->nid, array('absolute' => 1)).'" title="'.$o->url.'">'.$o->title.'</a></li>';
+		}
+		$output .= theme('item_list', $item, NULL, 'ul', array('id' => 'files_view_editor_baidu'));
+    $output .= pager_view();
+	}
+	$output .= '
+		<script>
+		$(function(){
+			$("#st").click(function(){
+				var type = $("#xselect").val();
+				var title = $("#title").val()
+				$.get("/?q=xiangguan&type="+type+"&title="+title, function(data) {
+					$("#xcon").html(data);
+				});
+			});
+			$(".xiangguan_list a").click(function(){
+				window.returnValue=$(this).attr("href");
+				window.close();
+				return false;
+			});
+			$(".pager a").click(function(){
+				$.get($(this).attr("href"), function(data) {
+					$("#xcon").html(data);
+				});
+				return false;
+			});
+		});
+		</script>';
+	if($_REQUEST['page'] != ''){
+		echo $output;
+	}else{
+		echo theme('print', $output);
+	}
+	exit();
+}
+
+/**
+ *@Operating  hook_sitemap
+ */
+function content_sitemap_front(){
+	$data = content_list('news', '', 0, 100);
+	return $data;
+}
+
+/**
+ *@Operating   hook_form_alter
+ */
+function content_form_alter($form_id, $form_token, &$form){
+	/*
+	if($form_id == 'content_form' && arg(3) == 'edit'){
+		if($form['fields']['fields']['xiangguan']['#default_value'] != ''){
+			if($form['fields']['fields']['xiangguan']['#default_value'] == 27){
+				$module = 'content_ext_renwu';
+			}
+			if($form['fields']['fields']['xiangguan']['#default_value'] == 28){
+				$module = 'content_ext_renwu';
+			}
+			$title = db_query("SELECT n.title FROM {".$module."} n LEFT JOIN {storage} s ON n.nid = s.ext_type2 WHERE s.ext_id = ? AND s.ext_type = ?", array($form['fields']['nid']['#default_value'], $form['fields']['fields']['xiangguan']['#default_value']), array('return' => 'column'));
+			$form['fields']['fields']['xiangguan']['#description'] = $title;
+		}
+	}
+	*/
+	if($form_id == 'comment_form'){
+		$form['fields']['body']['#title'] = '<span class="comfa">发表评论</span>';
+	}
+	if($form_id == 'user_edit_form'){
+		$form['fields']['pass']['#required'] = 0;
+		$form['fields']['op']['#default_value'] = '';
+	}
+
+	return $form;
+}
+
+/**
+ *@Operating  jquery_ui  登录
+ */
+function ajax_login(){
+	dd_jqui();
+	echo theme('print', dd_get_form('user_login_form'));
+	exit();
+}
+
+/**
+ *@Operating  顶，踩，收藏
+ */
+function content_voteapi_setting($type = 'content', $value = array()){
+	$array = array('is_login' => 0, 'is_only' => 1);
+	return $array;
+}
+
+/**
+ *@Operating   会员列表页
+ */
+function zlzz_page(){
+	$fetch = pager_query("SELECT DISTINCT ur.uid FROM {user_roles} ur LEFT JOIN {fields_term_node} ftn ON ur.uid = ftn.nid WHERE ur.rid = ? AND ftn.tid > ? AND ftn.tid < ? ORDER BY ftn.tid ASC", 20, 0, NULL, array(4, 502, 512));
+	if($fetch){
+		$output = theme('user_category', $fetch);
+	}else{
+		$output = system_no_content();
+	}
+
+	return $output;
+}
+/**
+ *@Operating   会员列表
+ */
+function zlzz_list($start, $limit){
+	$fetch = db_query("SELECT DISTINCT ur.uid FROM {user_roles} ur LEFT JOIN {fields_term_node} ftn ON ur.uid = ftn.nid WHERE ur.rid = ? AND ftn.tid > ? AND ftn.tid < ? ORDER BY ftn.tid ASC", array(4, 502, 512), array('limit' => array($start,$limit)));
+	foreach($fetch as $key => $val){
+		$fetch[$key] = user_load($val->uid);
+	}
+
+	return $fetch;
+}
+
+/**
+ *@Operating  微消息列表页无限加载
+ */
+function wxx_scoll_page(){
+	$day = $_REQUEST['day'];
+	if($day != ''){
+		$stime = strtotime($_GET['day'] - 1);
+		$etime = $stime + 86399;
+		$fetch = db_query("SELECT nid FROM {content_ext_wxx} WHERE 1 AND created >= ? AND created <= ? AND status = 1", array($stime, $etime));
+		if($fetch){
+			$zaobao = db_query("SELECT nid,title FROM {content_ext_news} WHERE created >= ? AND created <= ? AND title like ?", array($stime, $etime, '%车云早报%'), array('return' => 'one'));
+			$str = '<div class="newst"><span class="xtit">'.date('Y年m月d日', $etime).'</span>';
+			if($zaobao->nid != ''){
+				$str .= '<span class="xtit fr"><a href="'.url('content/news/'.$zaobao->nid).'" target="_blank">查看当天车云早报</a><span>';
+			}
+			$str .= '</div>';
+			foreach($fetch as $key=>$val){
+				$val = content_load($val->nid, 'wxx');
+				if($val->flag == 's'){ $renzheng = '<img src="'.path_to_theme().'/images/vv.png" height="12px" />'; }
+				$str .= '<div class="wxx_term_list" day="'.date('Ymd', $val->created).'">
+					<h3><a href="http://weibo.com/'.$val->fields['wid']->text.'/'.$val->fields['sid']->text.'" target="_blank">'.$val->title.'</a></h3>
+					<div class="des"><span class="author"><a href="http://weibo.com/u/'.$val->fields['wid']->text.'" target="_blank">'.$val->fields['wzuozhe']->text.'</a>'.$renzheng.'</span><a href="http://weibo.com/'.$val->fields['wid']->text.'/'.$val->fields['sid']->text.'" target="_blank">'.$val->body.'...</a></div>
+					<div class="submit">发表于&nbsp;&nbsp;'.date('Y-m-d H:i', $val->created).'<span class="cnum">'.$val->comment_count.'</span></div>
+				</div>';
+			}
+		}else{
+			$zaobao = db_query("SELECT nid,title FROM {content_ext_news} WHERE created >= ? AND created <= ? AND title like ?", array($stime, $etime, '%车云早报%'), array('return' => 'one'));
+			if($zaobao->nid != ''){
+				$str = '<div class="newst"><span class="xtit">'.date('Y年m月d日', $etime).'</span><span class="xtit fr"><a href="'.url('content/news/'.$zaobao->nid).'" target="_blank">查看当天车云早报</a><span></div>';
+			}
+			$str .= '<div style="display:none;" class="wxx_term_list" day="'.date('Ymd', $stime).'"></div>';
+		}
+		echo $str;exit();
+	}else{
+		
+	}
+	exit();
+}
+
+/**
+ *@Operating  评论列表
+ */
+function comment_list($start, $limit){
+	$fetch = db_query("SELECT * FROM {comment} WHERE 1 ORDER BY cid DESC", array(), array('limit' => array($start,$limit)));
+	foreach($fetch as $key => $val){
+		$val->body = preg_replace('/-(.*)-/i', '', $val->body);
+		$val->body = preg_replace('/\[(.*)\]/i', '', $val->body);
+		$fetch[$key]->title = str_replace('回复：', '', $val->title);
+		$tmp = str_replace('_', '/', $val->ext_type);
+		$fetch[$key]->url = url($tmp.'/'.$val->ext_id);
+	}
+
+	return $fetch;
+}
+
+/**
+ *@Operating  hook 用户资料页面menu
+
+function content_user_center_info(){
+	return array(
+    'newpass' => array(
+      'title' => t('user', '我的关注'),
+    ),
+    'edit' => array(
+      'title' => t('user', '我的收藏')
+    ),
+  );
+} */
+
+function tougao_form() {
+  $form['fields']['title'] = array(
+    '#title' => '标题',
+    '#type' => 'textfield',
+    '#weight' => -100,
+    '#default_value' => '',
+    '#required' => 1,
+  );
+  $form['fields']['type'] = array(
+    '#type' => 'hidden',
+    '#default_value' => 'news',
+    '#constant' => 1,
+  );
+  
+  $form['fields']['body'] = array(
+    '#title' => '内容',
+    '#type' => 'textarea',
+    '#default_value' => '',
+    '#required' => 0,
+    '#weight' => 100,
+    '#attributes' => array(
+      'id' => 'tougao_form_type_body',
+    )
+  );
+  
+	$form['fields']['description'] = array(
+    '#title' => t('description', '联系方式'),
+    '#type' => 'textfield',
+    '#default_value' => '',
+    '#required' => 1,
+    '#weight' => 101,
+    '#attributes' => array('size' => 20)
+  );
+
+  $form['fields']['button'] = array(
+    '#type' => 'submit',
+    '#weight' => 150,
+    '#submit' => 'tougao_form_submit'
+  );
+  dd_get_baidueditor('tougao_form_type_body', array(
+    'toolbar' => 'small', // 编辑器按钮，可选参数:full small  medium
+    'height' => 300, // 高度
+		'swfupload' => 1,
+  ));
+
+  return $form;
+}
+
+
+function tougao_form_validate(&$form, &$v) {
+ 
+}
+
+function tougao_form_submit(&$form, &$v) {
+	$v['_dida_values']->status = 0;
+	$v['_dida_values']->uid = $GLOBALS['user']->uid;
+	$v['_dida_values']->created = time();
+  if (content_save($v['_dida_values'], 0)) {
+    dd_set_message(t('content', '操作成功'));
+		dd_goto('user/'.$GLOBALS['user']->uid.'/article');
+  } else {
+    dd_set_message(t('content', '抱歉，出现异常，无法保存'), 'error');
+  }
+}
+
+/**
+ *@Operating  微信输出页面
+ */
+function weixin_page($type, $content){
+	header('Content-Type: text/html; charset=utf-8');
+	echo theme('weixin', $content);
+	exit();
+}
+
+/**
+ * 发送 ping百度等
+ */
+function content_set_ping($node){
+  global $conf, $base_url;
+  
+  $data['params'] = array(
+    $conf['site_global']['name'], // 网站名称
+    $base_url, // 网站首页
+    url('content/'.$node->type.'/'.$node->nid, array('absolute' => false)),
+  );
+  
+  return dd_set_ping($data);
+}
